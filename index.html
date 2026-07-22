@@ -28,7 +28,8 @@ a{color:inherit}
 .hide{display:none!important}
 
 /* ============ LOGIN ============ */
-#login{position:fixed;inset:0;background:linear-gradient(125deg,#0a1524,#16294a 55%,#1d3258);display:grid;place-items:center;z-index:80;padding:20px;overflow:auto}
+#login{position:fixed;inset:0;background:linear-gradient(125deg,#0a1524,#16294a 55%,#1d3258);display:grid;place-items:center;z-index:80;overflow:auto;
+  padding:calc(20px + env(safe-area-inset-top,0px)) 20px calc(20px + env(safe-area-inset-bottom,0px))}
 #login::after{content:"";position:absolute;inset:0;background:repeating-linear-gradient(115deg,rgba(255,255,255,.035) 0 2px,transparent 2px 8px);pointer-events:none}
 .lcard{position:relative;z-index:1;width:100%;max-width:380px;background:#fff;border-radius:18px;padding:30px;box-shadow:0 24px 70px rgba(0,0,0,.42)}
 .lcard img{height:56px;display:block;margin:0 auto 18px}
@@ -47,7 +48,9 @@ a{color:inherit}
 /* ============ TOP ============ */
 .top{background:linear-gradient(120deg,#0c1729,#16294a 55%,#1d3258);color:#fff;position:relative;overflow:hidden}
 .top::after{content:"";position:absolute;inset:0;background:repeating-linear-gradient(115deg,rgba(255,255,255,.04) 0 2px,transparent 2px 7px);pointer-events:none}
-.top-in{max-width:1280px;margin:0 auto;padding:13px 18px;display:flex;align-items:center;gap:14px;position:relative;z-index:1}
+.top{padding-top:env(safe-area-inset-top,0px)}
+.top-in{max-width:1280px;margin:0 auto;display:flex;align-items:center;gap:14px;position:relative;z-index:1;
+  padding:13px max(18px,env(safe-area-inset-right,0px)) 13px max(18px,env(safe-area-inset-left,0px))}
 .top img{height:44px}
 .top .tt b{display:block;font-family:'Saira Condensed';font-weight:700;font-size:19px;letter-spacing:.6px}
 .top .tt span{font-size:11px;color:#b8c6dd}
@@ -56,9 +59,24 @@ a{color:inherit}
 .top .gh{font-size:11px;color:#dbe4f2;border:1px solid rgba(255,255,255,.28);padding:8px 13px;border-radius:9px;text-transform:uppercase;letter-spacing:.6px;font-weight:600;margin-left:10px}
 .top .gh:hover{background:rgba(255,255,255,.12);color:#fff}
 @media(max-width:700px){.top .who{display:none}.top .tt span{display:none}}
+@media(max-width:560px){
+  .top-in{padding-top:10px;padding-bottom:10px;gap:9px}
+  .top img{height:34px}
+  .top .tt b{font-size:15px;letter-spacing:.4px}
+  .top .gh{padding:9px 11px;font-size:10.5px;margin-left:4px;white-space:nowrap}
+  .nav button{padding:12px 11px;font-size:12.5px}
+  .wrap{padding:14px 12px}
+  .hd h1{font-size:21px}
+}
+@media(max-width:380px){
+  .top img{height:29px}
+  .top .tt b{font-size:13.5px}
+  .top .gh{padding:8px 9px;font-size:10px}
+}
 
 /* ============ NAV ============ */
 .nav{background:#fff;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:40}
+@supports(-webkit-touch-callout:none){.nav{position:static}}
 .nav-in{max-width:1280px;margin:0 auto;padding:0 18px;display:flex;gap:2px;overflow-x:auto;scrollbar-width:none}
 .nav-in::-webkit-scrollbar{display:none}
 .nav button{padding:14px 15px;font-size:13px;font-weight:600;color:var(--muted);white-space:nowrap;border-bottom:3px solid transparent;display:flex;align-items:center;gap:7px}
@@ -489,7 +507,7 @@ function renderPublic(){
 function renderPublicResults(){
   const box=$('#pres'); if(!box) return;
   const q=norm($('#pq').value);
-  if(!DATA.catalogo.length){ box.innerHTML='<div class="empty"><div class="ic">📦</div>El catálogo aún no está publicado.<br>Escríbenos por WhatsApp y te cotizamos.</div>'; return; }
+  if(!DATA.catalogo.length){ box.innerHTML='<div class="empty"><div class="ic">📦</div>Cargando el catálogo…<br>Si no aparece, escríbenos por WhatsApp y te cotizamos.</div>'; return; }
   if(!q){ box.innerHTML='<div class="empty">Escribe tu medida para ver los precios.</div>'; return; }
   const toks=q.split(' ').filter(Boolean), out=[];
   for(const r of DATA.catalogo){
@@ -1801,14 +1819,20 @@ async function doLogin(){
   }catch(x){ err.textContent=x.message; err.classList.add('on'); }
   btn.disabled=false; btn.textContent='Entrar';
 }
-function logout(){
+async function logout(){
   TOKEN=''; USER=''; cart=[]; TAB='cotizar';
   UID=''; try{ ['lcm_tk','lcm_us','lcm_uid','lcm_col'].forEach(k=>localStorage.removeItem(k)); }catch(e){}
+  DATA.catalogo=[];
   render();
+  await loadCatalogo();
+  if(!TOKEN) render();
 }
 $('#lbtn').addEventListener('click', doLogin);
 ['lm','lp'].forEach(id=>$('#'+id).addEventListener('keydown', e=>{ if(e.key==='Enter') doLogin(); }));
-$('#lback').addEventListener('click', ()=>{ hideLogin(); render(); });
+$('#lback').addEventListener('click', async ()=>{
+  hideLogin(); render();
+  if(!TOKEN && !DATA.catalogo.length){ await loadCatalogo(); render(); }
+});
 $('#btnAccess').addEventListener('click', ()=>{ if(TOKEN) logout(); else showLogin(); });
 
 /* ================= ARRANQUE ================= */
