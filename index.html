@@ -309,7 +309,7 @@ const $  = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 
 /* ================= ESTADO ================= */
-let TOKEN='', USER='', TAB='cotizar';
+let TOKEN='', USER='', UID='', UCOL='users', TAB='cotizar';
 let DATA = {productos:[], catalogo:[], clientes:[], ventas:[], egresos:[], ingresos:[], cartera:[], cotizaciones:[]};
 let cart=[], modo='comercial', plazoM=0, metodo='efectivo';
 let SET = {tasa:0.015, prima:0.01, round:1000, addi:0.065*1.19, mp:0.06, util:0.30, pctSanti:0.55};
@@ -378,7 +378,8 @@ async function doAuth(mail, pass){
     try{
       const r = await fetch(PB+'/api/collections/'+col+'/auth-with-password',{method:'POST',
         headers:{'Content-Type':'application/json'}, body:JSON.stringify({identity:mail, password:pass})});
-      if(r.ok){ const j=await r.json(); return {token:j.token, email:(j.record&&j.record.email)||mail}; }
+      if(r.ok){ const j=await r.json();
+        return {token:j.token, email:(j.record&&j.record.email)||mail, id:(j.record&&j.record.id)||'', col}; }
       last='Correo o contraseña incorrectos.';
     }catch(e){ last='No se pudo conectar con el servidor.'; }
   }
@@ -1519,6 +1520,7 @@ function renderAjustes(){
       Actualmente publicadas: <b>${DATA.catalogo.length}</b>. Hazlo cada vez que actualices la lista del mes.</p>
       <div style="border-top:1px solid var(--line);margin-top:15px;padding-top:14px">
         <p class="note">Sesión: <b>${esc(USER)}</b><br>Servidor: ${esc(PB)}</p>
+        <button class="btn gh blk" id="btnPass" style="margin-top:9px">🔑 Cambiar mi contraseña</button>
         <button class="btn gh blk" id="btnRef" style="margin-top:9px">🔄 Recargar datos</button>
       </div>
     </div></div>
@@ -1531,8 +1533,37 @@ function renderAjustes(){
     saveSet(); toast('Parámetros guardados');
   });
   $('#btnBackup').addEventListener('click', exportBackup);
+  $('#btnPass').addEventListener('click', modalPass);
   $('#btnRef').addEventListener('click', async ()=>{ toast('Recargando…'); await loadAll(); await loadCatalogo(); render(); toast('Datos actualizados'); });
   $('#btnPub').addEventListener('click', publicarCatalogo);
+}
+function modalPass(){
+  if(!UID){ toast('Vuelve a iniciar sesión para cambiar la contraseña', true); return; }
+  openModal('Cambiar mi contraseña', `
+    <p class="note" style="margin-bottom:13px">Cambia la contraseña de <b>${esc(USER)}</b>. Debe tener mínimo 8 caracteres.</p>
+    <div class="fld"><label>Contraseña actual *</label><input id="pw_old" type="password" autocomplete="current-password"></div>
+    <div class="fld"><label>Nueva contraseña *</label><input id="pw_new" type="password" autocomplete="new-password"></div>
+    <div class="fld"><label>Repite la nueva *</label><input id="pw_rep" type="password" autocomplete="new-password"></div>
+    <p class="note">Al guardar se cierra la sesión y tendrás que entrar de nuevo con la contraseña nueva.</p>`,
+    `<button class="btn gh" id="pwCancel">Cancelar</button>
+     <button class="btn acc" id="pwSave">Cambiar contraseña</button>`);
+  $('#pwCancel').addEventListener('click', closeModal);
+  $('#pwSave').addEventListener('click', async ()=>{
+    const o=$('#pw_old').value, a=$('#pw_new').value, b=$('#pw_rep').value;
+    if(!o){ toast('Escribe tu contraseña actual', true); return; }
+    if(a.length<8){ toast('La nueva debe tener mínimo 8 caracteres', true); return; }
+    if(a!==b){ toast('Las contraseñas nuevas no coinciden', true); return; }
+    const btn=$('#pwSave'); btn.disabled=true; btn.textContent='Guardando…';
+    try{
+      await api(`/api/collections/${UCOL}/records/${UID}`, {method:'PATCH',
+        body: JSON.stringify({oldPassword:o, password:a, passwordConfirm:b})});
+      closeModal(); toast('Contraseña cambiada. Vuelve a entrar.');
+      setTimeout(()=>{ logout(); showLogin(); }, 1200);
+    }catch(x){
+      toast(/oldPassword|invalid/i.test(x.message) ? 'La contraseña actual no es correcta' : ('Error: '+x.message), true);
+      btn.disabled=false; btn.textContent='Cambiar contraseña';
+    }
+  });
 }
 async function publicarCatalogo(){
   if(!DATA.productos.length){ toast('No hay productos', true); return; }
@@ -1761,8 +1792,9 @@ async function doLogin(){
   err.classList.remove('on'); btn.disabled=true; btn.textContent='Entrando…';
   try{
     const r=await doAuth($('#lm').value.trim(), $('#lp').value);
-    TOKEN=r.token; USER=r.email;
-    try{ localStorage.setItem('lcm_tk',TOKEN); localStorage.setItem('lcm_us',USER); }catch(x){}
+    TOKEN=r.token; USER=r.email; UID=r.id||''; UCOL=r.col||'users';
+    try{ localStorage.setItem('lcm_tk',TOKEN); localStorage.setItem('lcm_us',USER);
+         localStorage.setItem('lcm_uid',UID); localStorage.setItem('lcm_col',UCOL); }catch(x){}
     hideLogin(); cart=[]; TAB='tablero';
     $('#view').innerHTML='<div class="load"><div class="spin"></div>Cargando tu información…</div>';
     await loadAll(); render(); $('#lp').value='';
@@ -1771,7 +1803,7 @@ async function doLogin(){
 }
 function logout(){
   TOKEN=''; USER=''; cart=[]; TAB='cotizar';
-  try{ localStorage.removeItem('lcm_tk'); localStorage.removeItem('lcm_us'); }catch(e){}
+  UID=''; try{ ['lcm_tk','lcm_us','lcm_uid','lcm_col'].forEach(k=>localStorage.removeItem(k)); }catch(e){}
   render();
 }
 $('#lbtn').addEventListener('click', doLogin);
@@ -1788,7 +1820,8 @@ $('#btnAccess').addEventListener('click', ()=>{ if(TOKEN) logout(); else showLog
   hideLogin();
   $('#view').innerHTML='<div class="load"><div class="spin"></div>Cargando…</div>';
   let t='', u='';
-  try{ t=localStorage.getItem('lcm_tk')||''; u=localStorage.getItem('lcm_us')||''; }catch(e){}
+  try{ t=localStorage.getItem('lcm_tk')||''; u=localStorage.getItem('lcm_us')||'';
+       UID=localStorage.getItem('lcm_uid')||''; UCOL=localStorage.getItem('lcm_col')||'users'; }catch(e){}
   if(t){
     TOKEN=t; USER=u;
     try{
