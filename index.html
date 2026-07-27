@@ -748,6 +748,7 @@ function modalVenta(){
         <datalist id="dlCli2">${DATA.clientes.map(c=>`<option value="${esc(c.nombre)}">`).join('')}</datalist></div>
       <div class="fld"><label>Fecha *</label><input id="v_fec" type="date" value="${iso(hoy())}"></div>
       <div class="fld"><label>Factura</label><input id="v_fac"></div>
+      <div class="fld"><label>Cédula / NIT</label><input id="v_nit" value="${esc(cl&&cl.nit||'')}"></div>
       <div class="fld"><label>Teléfono</label><input id="v_tel" value="${esc(cl&&cl.telefono||'')}"></div>
       <div class="fld"><label>Ciudad</label><input id="v_ciu" value="${esc(($('#c_ciu').value||'')||(cl&&cl.ciudad)||'')}"></div>
       <div class="fld full"><label>Dirección</label><input id="v_dir" value="${esc(cl&&cl.direccion||'')}"></div>
@@ -781,6 +782,8 @@ function modalVenta(){
   };
   ['v_val','v_int','v_cos'].forEach(id=>$('#'+id).addEventListener('input', calc));
   $('#v_ep').addEventListener('change', e=>{ $('#v_car').checked = e.target.value!=='pagada'; });
+  $('#v_cli').addEventListener('change', ()=>{ const c=DATA.clientes.find(x=>norm(x.nombre)===norm($('#v_cli').value.trim()));
+    if(c){ if($('#v_nit')) $('#v_nit').value=c.nit||''; $('#v_tel').value=c.telefono||''; $('#v_ciu').value=c.ciudad||''; $('#v_dir').value=c.direccion||''; $('#v_dep').value=c.departamento||''; } });
   calc();
   $('#vCancel').addEventListener('click', closeModal);
   $('#vSave').addEventListener('click', ()=>saveVenta(true));
@@ -796,12 +799,12 @@ async function saveVenta(fromCart){
   try{
     let cl=DATA.clientes.find(x=>norm(x.nombre)===norm(nombre));
     if(!cl){
-      cl = await pbCreate('clientes', {nombre, telefono:g('v_tel'), direccion:g('v_dir'),
+      cl = await pbCreate('clientes', {nombre, nit:g('v_nit'), telefono:g('v_tel'), direccion:g('v_dir'),
         ciudad:g('v_ciu'), departamento:g('v_dep'), tipo:'persona', segmento:'otro'});
       DATA.clientes.push(cl);
     }
     const body={ fecha:pbDate(g('v_fec')), factura:g('v_fac'), cliente:cl.id, cliente_nombre:nombre,
-      telefono:g('v_tel'), direccion:g('v_dir'), ciudad:g('v_ciu'), departamento:g('v_dep'),
+      nit:g('v_nit'), telefono:g('v_tel'), direccion:g('v_dir'), ciudad:g('v_ciu'), departamento:g('v_dep'),
       descripcion:g('v_desc'), cantidad:Math.round(num($('#v_und').value)),
       valor_venta:v, intereses:i, valor_costo:c, utilidad:u, parte_santi:s, parte_luis:l,
       forma_pago:$('#v_fp').value, estado_pago:$('#v_ep').value, proveedor:g('v_prov'), notas:'' };
@@ -1146,22 +1149,101 @@ function modalNuevaVenta(){
   $('#vCancel').addEventListener('click', closeModal);
   $('#vSave').addEventListener('click', ()=>saveVenta(false));
 }
-function verVenta(id){
-  const v=DATA.ventas.find(x=>x.id===id); if(!v) return;
-  openModal('Venta · '+(v.cliente_nombre||''), `
-    <div style="font-size:13.5px;line-height:2">
-      <b>Fecha:</b> ${v._d?v._d.toLocaleDateString('es-CO'):'—'} &nbsp;·&nbsp; <b>Factura:</b> ${esc(v.factura||'—')}<br>
-      <b>Producto:</b> ${esc(v.descripcion||'—')} (${v.cantidad||0} und)<br>
-      <b>Contacto:</b> ${esc(v.telefono||'—')} · ${esc(v.ciudad||'—')} ${v.departamento?', '+esc(v.departamento):''}<br>
-      ${v.direccion?`<b>Dirección:</b> ${esc(v.direccion)}<br>`:''}
-      <b>Proveedor:</b> ${esc(v.proveedor||'—')}
+function verVenta(id){ modalEditVenta(id); }
+function fillCliente(nombre, pref){
+  const c=DATA.clientes.find(x=>norm(x.nombre)===norm((nombre||'').trim())); if(!c) return;
+  const set=(sfx,val)=>{ const el=$('#'+pref+sfx); if(el && !el.value) el.value=val||''; };
+  const setF=(sfx,val)=>{ const el=$('#'+pref+sfx); if(el) el.value=val||''; };
+  setF('nit', c.nit); setF('tel', c.telefono); setF('ciu', c.ciudad);
+  setF('dir', c.direccion); setF('dep', c.departamento);
+}
+function modalEditVenta(id){
+  const v = id ? DATA.ventas.find(x=>x.id===id) : null;
+  const g=(k,d)=>esc(v&&v[k]!=null&&v[k]!==''?v[k]:(d||''));
+  const cl = v ? DATA.clientes.find(c=>c.id===v.cliente || norm(c.nombre)===norm(v.cliente_nombre||'')) : null;
+  const nit = v ? (v.nit || (cl&&cl.nit) || '') : '';
+  openModal(v?'Editar venta':'Nueva venta', `
+    <div class="fgrid">
+      <div class="fld full"><label>Cliente *</label><input id="e_cli" value="${g('cliente_nombre')}" list="dlCliE" autocomplete="off">
+        <datalist id="dlCliE">${DATA.clientes.map(c=>`<option value="${esc(c.nombre)}">`).join('')}</datalist></div>
+      <div class="fld"><label>Cédula / NIT</label><input id="e_nit" value="${esc(nit)}"></div>
+      <div class="fld"><label>Teléfono</label><input id="e_tel" value="${g('telefono', cl&&cl.telefono)}"></div>
+      <div class="fld"><label>Ciudad</label><input id="e_ciu" value="${g('ciudad', cl&&cl.ciudad)}"></div>
+      <div class="fld"><label>Departamento</label><input id="e_dep" value="${g('departamento', cl&&cl.departamento)}"></div>
+      <div class="fld full"><label>Dirección</label><input id="e_dir" value="${g('direccion', cl&&cl.direccion)}"></div>
+      <div class="fld"><label>Fecha *</label><input id="e_fec" type="date" value="${v&&v.fecha?iso(v.fecha):iso(hoy())}"></div>
+      <div class="fld"><label>Factura</label><input id="e_fac" value="${g('factura')}"></div>
+      <div class="fld"><label>Proveedor</label><input id="e_prov" value="${g('proveedor')}"></div>
+      <div class="fld full"><label>Descripción / producto *</label><input id="e_desc" value="${g('descripcion')}"></div>
+      <div class="fld"><label>Unidades</label><input id="e_und" type="number" value="${v?(+v.cantidad||0):1}"></div>
+      <div class="fld"><label>Valor venta *</label><input id="e_val" type="number" value="${v?(+v.valor_venta||0):0}"></div>
+      <div class="fld"><label>Intereses</label><input id="e_int" type="number" value="${v?(+v.intereses||0):0}"></div>
+      <div class="fld"><label>Costo mercancía *</label><input id="e_cos" type="number" value="${v?(+v.valor_costo||0):0}"></div>
+      <div class="fld"><label>Forma de pago</label><select id="e_fp">
+        ${[['contado','Contado'],['credito_30','Crédito 30'],['credito_60','Crédito 60'],['credito_90','Crédito 90'],['tarjeta','Tarjeta'],['addi','Addi'],['credito_propio','Crédito propio']].map(([k,t])=>`<option value="${k}" ${v&&v.forma_pago===k?'selected':''}>${t}</option>`).join('')}</select></div>
+      <div class="fld"><label>Estado de pago</label><select id="e_ep">
+        ${[['pagada','Pagada'],['pendiente','Pendiente'],['parcial','Parcial']].map(([k,t])=>`<option value="${k}" ${v&&v.estado_pago===k?'selected':''}>${t}</option>`).join('')}</select></div>
     </div>
-    <div style="background:var(--steel-l);border-radius:10px;padding:12px 14px;margin-top:12px;font-size:13px;line-height:2">
-      Venta: <b>${fmt(v.valor_venta)}</b> · Intereses: <b>${fmt(v.intereses)}</b> · Costo: <b>${fmt(v.valor_costo)}</b><br>
-      Utilidad: <b style="color:var(--ok)">${fmt(v.utilidad)}</b> · margen ${v.valor_venta?pct(v.utilidad/v.valor_venta):'—'}<br>
-      Santiago: <b>${fmt(v.parte_santi)}</b> · Luis: <b>${fmt(v.parte_luis)}</b>
-    </div>`, `<button class="btn gh" id="vClose">Cerrar</button>`);
-  $('#vClose').addEventListener('click', closeModal);
+    <div id="e_calc" style="background:var(--steel-l);border-radius:10px;padding:11px 13px;font-size:12.5px;color:var(--navy);line-height:1.8"></div>
+    ${!v?`<label style="display:flex;align-items:center;gap:8px;margin-top:11px;font-size:13px">
+      <input type="checkbox" id="e_car" style="width:17px;height:17px;accent-color:var(--orange)"> Registrar también en cartera</label>`:''}`,
+    `${v?`<button class="btn dg" id="eDel">Eliminar</button>`:''}
+     <button class="btn gh" id="eCancel">Cancelar</button>
+     <button class="btn acc" id="eSave">${v?'Guardar cambios':'Guardar venta'}</button>`, true);
+  const calc=()=>{ const val=num($('#e_val').value), i=num($('#e_int').value), c=num($('#e_cos').value);
+    const u=val+i-c, sa=u*SET.pctSanti;
+    $('#e_calc').innerHTML=`Utilidad: <b>${fmt(u)}</b> · margen ${val?pct(u/val):'—'}<br>Santiago: <b>${fmt(sa)}</b> · Luis: <b>${fmt(u-sa)}</b>`; };
+  ['e_val','e_int','e_cos'].forEach(x=>$('#'+x).addEventListener('input', calc));
+  $('#e_cli').addEventListener('change', ()=>fillCliente($('#e_cli').value,'e_'));
+  const ep=$('#e_ep'); if(ep && $('#e_car')) ep.addEventListener('change', e=>{ $('#e_car').checked = e.target.value!=='pagada'; });
+  calc();
+  $('#eCancel').addEventListener('click', closeModal);
+  if(v) $('#eDel').addEventListener('click', async ()=>{
+    if(!confirm('¿Eliminar esta venta?')) return;
+    try{ await pbDelete('ventas', v.id); DATA.ventas=DATA.ventas.filter(x=>x.id!==v.id);
+         closeModal(); toast('Venta eliminada'); render(); }catch(x){ toast('Error: '+x.message,true); } });
+  $('#eSave').addEventListener('click', ()=>saveVentaEdit(v));
+}
+async function saveVentaEdit(v){
+  const g=id=>($('#'+id)&&$('#'+id).value||'').trim();
+  const nombre=g('e_cli');
+  if(!nombre){ toast('Escribe el cliente', true); return; }
+  if(!g('e_fec')){ toast('Escribe la fecha', true); return; }
+  const val=num($('#e_val').value), i=num($('#e_int').value), c=num($('#e_cos').value);
+  const u=val+i-c, sa=Math.round(u*SET.pctSanti), lu=Math.round(u-sa);
+  const btn=$('#eSave'); if(btn){ btn.disabled=true; btn.textContent='Guardando…'; }
+  try{
+    let cl=DATA.clientes.find(x=>norm(x.nombre)===norm(nombre));
+    if(!cl){ cl=await pbCreate('clientes', {nombre, nit:g('e_nit'), telefono:g('e_tel'),
+        direccion:g('e_dir'), ciudad:g('e_ciu'), departamento:g('e_dep'), tipo:'persona', segmento:'otro'});
+      DATA.clientes.push(cl);
+    } else {
+      const patch={}; if(g('e_nit')&&!cl.nit) patch.nit=g('e_nit');
+      if(g('e_tel')&&!cl.telefono) patch.telefono=g('e_tel');
+      if(g('e_dir')&&!cl.direccion) patch.direccion=g('e_dir');
+      if(g('e_ciu')&&!cl.ciudad) patch.ciudad=g('e_ciu');
+      if(g('e_dep')&&!cl.departamento) patch.departamento=g('e_dep');
+      if(Object.keys(patch).length){ try{ const r=await pbUpdate('clientes', cl.id, patch); Object.assign(cl,r); }catch(e){} }
+    }
+    const body={ fecha:pbDate(g('e_fec')), factura:g('e_fac'), cliente:cl.id, cliente_nombre:nombre,
+      nit:g('e_nit'), telefono:g('e_tel'), direccion:g('e_dir'), ciudad:g('e_ciu'), departamento:g('e_dep'),
+      descripcion:g('e_desc'), cantidad:Math.round(num($('#e_und').value)),
+      valor_venta:val, intereses:i, valor_costo:c, utilidad:u, parte_santi:sa, parte_luis:lu,
+      forma_pago:$('#e_fp').value, estado_pago:$('#e_ep').value, proveedor:g('e_prov') };
+    if(v){ const r=await pbUpdate('ventas', v.id, body); Object.assign(v, r); v._d=new Date(v.fecha); toast('Venta actualizada'); }
+    else {
+      const r=await pbCreate('ventas', body); r._d=new Date(r.fecha); DATA.ventas.push(r);
+      if($('#e_car') && $('#e_car').checked){
+        const venc=new Date(); venc.setDate(venc.getDate()+30);
+        await pbCreate('cartera', {cliente:cl.id, cliente_nombre:nombre, venta:r.id, factura:g('e_fac'),
+          fecha_venta:pbDate(g('e_fec')), fecha_vence:pbDate(iso(venc)), valor_total:val+i, abonado:0,
+          saldo:val+i, estado:'al_dia', notas:g('e_desc')});
+        DATA.cartera=await pbAll('cartera');
+      }
+      toast('Venta registrada');
+    }
+    closeModal(); render();
+  }catch(e){ toast('Error: '+e.message, true); if(btn){ btn.disabled=false; btn.textContent=v?'Guardar cambios':'Guardar venta'; } }
 }
 
 /* ================= CLIENTES ================= */
@@ -1285,9 +1367,35 @@ function renderCartera(){
       <td class="num">${c.fecha_vence?new Date(c.fecha_vence).toLocaleDateString('es-CO',{day:'2-digit',month:'short',year:'2-digit'}):'—'}</td>
       <td><span class="pill ${cl}">${tx}</span></td>
       <td class="r" style="white-space:nowrap"><button class="btn acc sm" data-abono="${c.id}">Abonar</button>
+        <button class="btn wa sm" data-recordar="${c.id}" title="Recordar por WhatsApp" style="margin-left:5px">📲</button>
         <button class="btn gh sm" data-cdel="${c.id}" title="Eliminar" style="margin-left:5px">✕</button></td></tr>`; }).join('')}
     </tbody></table>`:`<div class="empty"><div class="ic">⏳</div>No hay facturas en cartera.</div>`}
   </div></div>`;
+}
+function recordarCartera(id){
+  const c=DATA.cartera.find(x=>x.id===id); if(!c) return;
+  const cl=DATA.clientes.find(x=>x.id===c.cliente || norm(x.nombre)===norm(c.cliente_nombre||''));
+  let tel=(cl&&cl.telefono||'').replace(/[^0-9]/g,'');
+  const vencida = c.fecha_vence && new Date(c.fecha_vence)<hoy();
+  const fv = c.fecha_vence ? new Date(c.fecha_vence).toLocaleDateString('es-CO',{day:'2-digit',month:'long',year:'numeric'}) : '';
+  const saludo = (cl&&cl.nombre||c.cliente_nombre||'').split(' ')[0] || 'Buen día';
+  const msg = `Hola ${saludo}, te saluda Llantas Camión Medellín.\n\n`+
+    (vencida
+      ? `Te recordamos que tu factura${c.factura?' N° '+c.factura:''} se encuentra *vencida* desde el ${fv}.\n`
+      : `Te recordamos el pago de tu factura${c.factura?' N° '+c.factura:''}${fv?', con vencimiento el '+fv:''}.\n`)+
+    `Saldo pendiente: *${fmt(c.saldo)}*` +
+    (c.notas?`\nReferencia: ${c.notas}`:'') +
+    `\n\nAgradecemos tu pago. Cualquier duda, con gusto te ayudamos. 🚛`;
+  const abrir = t => window.open('https://wa.me/'+t+'?text='+encodeURIComponent(msg.replace(/\\n/g,'\n')), '_blank');
+  if(tel){
+    if(tel.length<=10) tel='57'+tel;
+    abrir(tel);
+  } else {
+    // sin teléfono: abre WhatsApp para elegir contacto y copia el mensaje
+    navigator.clipboard && navigator.clipboard.writeText(msg.replace(/\\n/g,'\n')).catch(()=>{});
+    toast('Sin teléfono guardado · mensaje copiado, elige el contacto', true);
+    window.open('https://wa.me/?text='+encodeURIComponent(msg.replace(/\\n/g,'\n')), '_blank');
+  }
 }
 function modalAbono(id){
   const c=DATA.cartera.find(x=>x.id===id); if(!c) return;
@@ -1722,12 +1830,13 @@ document.addEventListener('click', async e=>{
     try{ await pbDelete('ventas', b.dataset.vdel); DATA.ventas=DATA.ventas.filter(x=>x.id!==b.dataset.vdel);
          toast('Venta eliminada'); render(); }catch(x){ toast('Error: '+x.message,true); } return; }
   if(b=e.target.closest('[data-ven]')){ verVenta(b.dataset.ven); return; }
-  if(e.target.id==='btnNewVenta'){ modalNuevaVenta(); return; }
+  if(e.target.id==='btnNewVenta'){ modalEditVenta(null); return; }
   /* clientes */
   if(b=e.target.closest('[data-cli]')){ modalCliente(b.dataset.cli); return; }
   if(e.target.id==='btnNewCli'){ modalCliente(null); return; }
   /* cartera */
   if(b=e.target.closest('[data-abono]')){ e.stopPropagation(); modalAbono(b.dataset.abono); return; }
+  if(b=e.target.closest('[data-recordar]')){ e.stopPropagation(); recordarCartera(b.dataset.recordar); return; }
   if(b=e.target.closest('[data-cdel]')){ e.stopPropagation();
     const c=DATA.cartera.find(x=>x.id===b.dataset.cdel);
     if(!confirm('¿Eliminar esta factura de cartera'+(c?' de '+c.cliente_nombre:'')+'?')) return;
