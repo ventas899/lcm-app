@@ -1638,6 +1638,12 @@ function renderAjustes(){
       <p class="note">Se guardan en este dispositivo. El plazo se calcula como tasa × meses + prima.</p>
     </div></div>
 
+    <div class="card"><div class="ch"><h2>Lista de precios del mes</h2></div><div class="cb">
+      <button class="btn acc blk" id="btnLista" style="margin-bottom:9px">📤 Subir lista de precios (Excel)</button>
+      <p class="note" style="margin-bottom:6px">Sube tu Excel del mes para actualizar costos y precios. Las referencias que ya existen se <b>actualizan</b> y las nuevas se <b>agregan</b>. Nada se borra.</p>
+      <p class="note">Tienes <b>${DATA.productos.length}</b> referencias cargadas. Después de subir la lista, no olvides <b>publicar el catálogo</b> para que el cliente vea los precios nuevos.</p>
+    </div></div>
+
     <div class="card"><div class="ch"><h2>Respaldo y catálogo</h2></div><div class="cb">
       <button class="btn pri blk" id="btnBackup" style="margin-bottom:9px">⬇️ Descargar respaldo completo en Excel</button>
       <p class="note" style="margin-bottom:15px">Un archivo con una hoja por módulo: ventas, clientes, cartera, egresos, ingresos y productos.</p>
@@ -1662,6 +1668,7 @@ function renderAjustes(){
   $('#btnPass').addEventListener('click', modalPass);
   $('#btnRef').addEventListener('click', async ()=>{ toast('Recargando…'); await loadAll(); await loadCatalogo(); render(); toast('Datos actualizados'); });
   $('#btnPub').addEventListener('click', publicarCatalogo);
+  $('#btnLista').addEventListener('click', modalLista);
 }
 function modalPass(){
   if(!UID){ toast('Vuelve a iniciar sesión para cambiar la contraseña', true); return; }
@@ -1689,6 +1696,85 @@ function modalPass(){
       toast(/oldPassword|invalid/i.test(x.message) ? 'La contraseña actual no es correcta' : ('Error: '+x.message), true);
       btn.disabled=false; btn.textContent='Cambiar contraseña';
     }
+  });
+}
+function modalLista(){
+  openModal('Subir lista de precios del mes', `
+    <p class="note" style="margin-bottom:12px">Selecciona tu archivo Excel (.xlsx) con la lista del mes. Debe tener las columnas:
+    <b>DESCRIPCION REFERENCIA</b>, <b>MARCA</b>, <b>APLICACION</b>, <b>TIPO</b>, <b>PRECIO</b> (costo) y <b>PRECIO VENTA</b>.</p>
+    <input type="file" id="lst_file" accept=".xlsx,.xls" style="width:100%;padding:11px;border:1.5px dashed var(--line);border-radius:10px;background:#fbfcfe">
+    <div id="lst_prev" style="margin-top:13px"></div>`,
+    `<button class="btn gh" id="lstCancel">Cancelar</button>
+     <button class="btn acc" id="lstGo" disabled>Procesar archivo</button>`, true);
+  let filas=[];
+  $('#lstCancel').addEventListener('click', closeModal);
+  $('#lst_file').addEventListener('change', async e=>{
+    const f=e.target.files[0]; if(!f) return;
+    try{
+      const buf=await f.arrayBuffer();
+      const wb=XLSX.read(buf, {type:'array'});
+      const ws=wb.Sheets[wb.SheetNames[0]];
+      const rows=XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
+      // localizar la fila de encabezados
+      let hi=-1;
+      for(let i=0;i<Math.min(rows.length,10);i++){
+        const t=rows[i].map(x=>norm(x)).join('|');
+        if(t.includes('descripcion') && t.includes('venta')){ hi=i; break; }
+      }
+      if(hi<0){ $('#lst_prev').innerHTML='<p class="note" style="color:var(--bad)">No encontré la fila de encabezados (DESCRIPCION… PRECIO VENTA). Revisa el archivo.</p>'; return; }
+      const head=rows[hi].map(x=>norm(x));
+      const col = name => head.findIndex(h=>h.includes(name));
+      const cD=col('descripcion'), cM=col('marca'), cA=col('aplicacion'), cT=col('tipo');
+      let cV=head.findIndex(h=>h.includes('venta'));
+      let cC=head.findIndex(h=>h==='precio' || (h.includes('precio') && !h.includes('venta')));
+      filas=[];
+      for(let i=hi+1;i<rows.length;i++){
+        const r=rows[i]; const d=(r[cD]||'').toString().trim();
+        if(!d) continue;
+        const venta=Math.round(num(r[cV])), costo=cC>=0?Math.round(num(r[cC])):0;
+        if(!(venta>0)) continue;
+        filas.push({descripcion:d, marca:(r[cM]||'').toString().trim(), aplicacion:(r[cA]||'').toString().trim(),
+          tipo:cT>=0?(r[cT]||'').toString().trim():'', costo, venta});
+      }
+      if(!filas.length){ $('#lst_prev').innerHTML='<p class="note" style="color:var(--bad)">No se leyeron referencias con precio de venta. Revisa las columnas.</p>'; return; }
+      // comparar con lo existente
+      const idx=new Map(DATA.productos.map(p=>[norm(p.descripcion), p]));
+      let nuevas=0, camb=0, igual=0;
+      filas.forEach(f=>{ const p=idx.get(norm(f.descripcion));
+        if(!p) nuevas++;
+        else if((+p.venta||0)!==f.venta || (+p.costo||0)!==f.costo) camb++;
+        else igual++; });
+      $('#lst_prev').innerHTML=`<div style="background:var(--steel-l);border-radius:10px;padding:13px 15px;font-size:13px;line-height:1.9">
+        Leídas: <b>${filas.length}</b> referencias<br>
+        🆕 Nuevas: <b style="color:var(--ok)">${nuevas}</b><br>
+        🔄 Con cambio de precio o costo: <b style="color:var(--orange-d)">${camb}</b><br>
+        ✔️ Sin cambios: <b>${igual}</b></div>`;
+      $('#lstGo').disabled=false;
+    }catch(x){ $('#lst_prev').innerHTML='<p class="note" style="color:var(--bad)">No se pudo leer el archivo: '+esc(x.message)+'</p>'; }
+  });
+  $('#lstGo').addEventListener('click', async ()=>{
+    if(!filas.length) return;
+    const btn=$('#lstGo'); btn.disabled=true;
+    const idx=new Map(DATA.productos.map(p=>[norm(p.descripcion), p]));
+    let ok=0, up=0, err=0;
+    for(const f of filas){
+      const prev=idx.get(norm(f.descripcion));
+      const body={descripcion:f.descripcion, marca:f.marca, aplicacion:f.aplicacion, costo:f.costo, venta:f.venta};
+      try{
+        if(prev){
+          if((+prev.venta||0)!==f.venta || (+prev.costo||0)!==f.costo){
+            const r=await pbUpdate('productos', prev.id, body); Object.assign(prev, r); up++;
+          }
+        } else {
+          const r=await pbCreate('productos', {...body, activo:true}); DATA.productos.push(r); idx.set(norm(f.descripcion), r); ok++;
+        }
+      }catch(x){ err++; }
+      btn.textContent='Procesando… '+(ok+up);
+    }
+    closeModal();
+    toast(`Lista actualizada · ${ok} nuevas, ${up} con nuevo precio`+(err?`, ${err} con error`:''), err>0);
+    render();
+    if(confirm('¿Publicar el catálogo público ahora con los precios nuevos?')) publicarCatalogo();
   });
 }
 async function publicarCatalogo(){
