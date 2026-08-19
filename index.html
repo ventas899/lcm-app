@@ -389,6 +389,20 @@ async function pbAll(col, extra){
 const pbCreate = (col, body) => api(`/api/collections/${col}/records`, {method:'POST', body:JSON.stringify(body)});
 const pbUpdate = (col, id, body) => api(`/api/collections/${col}/records/${id}`, {method:'PATCH', body:JSON.stringify(body)});
 const pbDelete = (col, id) => api(`/api/collections/${col}/records/${id}`, {method:'DELETE'});
+async function pbWipe(col, onProg){
+  let borrados=0;
+  while(true){
+    const r = await api(`/api/collections/${col}/records?page=1&perPage=200&fields=id`);
+    const items=r.items||[];
+    if(!items.length) break;
+    for(let i=0;i<items.length;i+=20){
+      await Promise.all(items.slice(i,i+20).map(x=>pbDelete(col, x.id).catch(()=>{})));
+      borrados+=Math.min(20, items.length-i);
+      if(onProg) onProg(borrados);
+    }
+  }
+  return borrados;
+}
 
 async function doAuth(mail, pass){
   let last='';
@@ -1754,51 +1768,55 @@ function modalLista(){
   });
   $('#lstGo').addEventListener('click', async ()=>{
     if(!filas.length) return;
+    if(!confirm(`Esta lista de ${filas.length} referencias REEMPLAZARÁ por completo el catálogo actual (${DATA.productos.length} referencias).\n\nLas anteriores se eliminan y quedan solo estas. ¿Continuar?`)) return;
     const btn=$('#lstGo'); btn.disabled=true;
-    const idx=new Map(DATA.productos.map(p=>[norm(p.descripcion), p]));
-    let ok=0, up=0, err=0;
-    for(const f of filas){
-      const prev=idx.get(norm(f.descripcion));
-      const body={descripcion:f.descripcion, marca:f.marca, aplicacion:f.aplicacion, costo:f.costo, venta:f.venta};
-      try{
-        if(prev){
-          if((+prev.venta||0)!==f.venta || (+prev.costo||0)!==f.costo){
-            const r=await pbUpdate('productos', prev.id, body); Object.assign(prev, r); up++;
-          }
-        } else {
-          const r=await pbCreate('productos', {...body, activo:true}); DATA.productos.push(r); idx.set(norm(f.descripcion), r); ok++;
-        }
-      }catch(x){ err++; }
-      btn.textContent='Procesando… '+(ok+up);
-    }
-    closeModal();
-    toast(`Lista actualizada · ${ok} nuevas, ${up} con nuevo precio`+(err?`, ${err} con error`:''), err>0);
-    render();
-    if(confirm('¿Publicar el catálogo público ahora con los precios nuevos?')) publicarCatalogo();
+    try{
+      // 1) borrar todo lo anterior
+      btn.textContent='Limpiando anterior…';
+      await pbWipe('productos', n=>{ btn.textContent='Limpiando… '+n; });
+      DATA.productos=[];
+      // 2) cargar la lista nueva
+      let ok=0, err=0;
+      for(let i=0;i<filas.length;i+=20){
+        const tanda=filas.slice(i,i+20);
+        await Promise.all(tanda.map(async f=>{
+          try{ const r=await pbCreate('productos', {descripcion:f.descripcion, marca:f.marca,
+                 aplicacion:f.aplicacion, costo:f.costo, venta:f.venta, activo:true});
+               DATA.productos.push(r); ok++; }
+          catch(x){ err++; }
+        }));
+        btn.textContent='Cargando… '+ok+'/'+filas.length;
+      }
+      closeModal();
+      toast(`Catálogo reemplazado · ${ok} referencias`+(err?`, ${err} con error`:''), err>0);
+      render();
+      if(confirm('¿Publicar el catálogo público ahora con esta lista? (también reemplaza lo que ve el cliente)')) publicarCatalogo();
+    }catch(x){ toast('Error: '+x.message, true); btn.disabled=false; btn.textContent='Procesar archivo'; }
   });
 }
 async function publicarCatalogo(){
   if(!DATA.productos.length){ toast('No hay productos', true); return; }
-  if(!confirm('Se publicarán '+DATA.productos.length+' referencias (sin costos) al catálogo público. ¿Continuar?')) return;
+  if(!confirm('Se publicarán '+DATA.productos.length+' referencias (sin costos) al catálogo que ve el cliente.\nEsto reemplaza por completo el catálogo público anterior. ¿Continuar?')) return;
   const btn=$('#btnPub'); btn.disabled=true; btn.textContent='Publicando…';
   try{
-    const ex = await pbAll('catalogo');
-    const keys = new Map(ex.map(r=>[norm(r.descripcion), r]));
-    let ok=0, up=0;
-    for(const p of DATA.productos){
-      const k=norm(p.descripcion), prev=keys.get(k);
-      const body={descripcion:p.descripcion, marca:p.marca||'', aplicacion:p.aplicacion||'', venta:+p.venta||0};
-      try{
-        if(prev){ if((+prev.venta||0)!==body.venta){ await pbUpdate('catalogo', prev.id, body); up++; } }
-        else { await pbCreate('catalogo', body); ok++; }
-      }catch(e){}
-      btn.textContent='Publicando… '+(ok+up);
+    // reemplazo total: vaciar el catálogo público y volver a copiarlo desde productos
+    btn.textContent='Limpiando anterior…';
+    await pbWipe('catalogo', n=>{ btn.textContent='Limpiando… '+n; });
+    let ok=0, err=0;
+    for(let i=0;i<DATA.productos.length;i+=20){
+      const tanda=DATA.productos.slice(i,i+20);
+      await Promise.all(tanda.map(async p=>{
+        try{ await pbCreate('catalogo', {descripcion:p.descripcion, marca:p.marca||'',
+               aplicacion:p.aplicacion||'', venta:+p.venta||0}); ok++; }
+        catch(e){ err++; }
+      }));
+      btn.textContent='Publicando… '+ok+'/'+DATA.productos.length;
     }
     await loadCatalogo();
-    toast('Catálogo publicado · '+ok+' nuevas, '+up+' actualizadas');
+    toast('Catálogo publicado · '+ok+' referencias'+(err?', '+err+' con error':''), err>0);
     render();
   }catch(e){ toast('Error: '+e.message, true); }
-  btn.disabled=false;
+  btn.disabled=false; btn.textContent='🌐 Publicar catálogo público';
 }
 
 /* ================= EXPORTAR EXCEL ================= */
