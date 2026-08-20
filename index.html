@@ -299,6 +299,7 @@ table.pr td{padding:7px 9px;border-bottom:1px solid #e2e8f0}
   <button data-t="clientes"><span class="ico">👥</span>Clientes</button>
   <button data-t="cartera"><span class="ico">⏳</span>Cartera</button>
   <button data-t="movs"><span class="ico">💸</span>Movimientos</button>
+  <button data-t="visitas"><span class="ico">📈</span>Visitas</button>
   <button data-t="ajustes"><span class="ico">⚙️</span>Ajustes</button>
 </div></nav>
 
@@ -387,6 +388,22 @@ async function pbAll(col, extra){
   return out;
 }
 const pbCreate = (col, body) => api(`/api/collections/${col}/records`, {method:'POST', body:JSON.stringify(body)});
+function hoyISO(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+async function track(tipo, ref){
+  try{
+    await fetch(PB+'/api/collections/visitas/records', {method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({tipo, dia:hoyISO(), ref:ref||''})});
+  }catch(e){}
+}
+// evita contar la misma visita muchas veces en la sesión
+function trackOnce(tipo, ref){
+  try{ const k='lcm_v_'+tipo+'_'+hoyISO();
+    if(sessionStorage.getItem(k)) return;
+    sessionStorage.setItem(k,'1');
+  }catch(e){}
+  track(tipo, ref);
+}
 const pbUpdate = (col, id, body) => api(`/api/collections/${col}/records/${id}`, {method:'PATCH', body:JSON.stringify(body)});
 const pbDelete = (col, id) => api(`/api/collections/${col}/records/${id}`, {method:'DELETE'});
 async function pbWipe(col, onProg){
@@ -493,6 +510,7 @@ function barChart(series){
 
 /* ================= VISTA PÚBLICA ================= */
 function renderPublic(){
+  trackOnce('visita');
   $('#nav').classList.add('hide');
   $('#topTitle').textContent='COTIZADOR EN LÍNEA';
   $('#topSub').textContent='Llantas Camión Medellín';
@@ -559,6 +577,7 @@ function renderPublicCart(){
 }
 function publicWa(){
   if(!cart.length) return;
+  track('whatsapp');
   let total=0;
   const lines=cart.map(it=>{ total+=it.venta*it.qty; return `• ${it.qty} x ${it.descripcion} — ${fmt(it.venta)}`; }).join('\n');
   const v=id=>($('#'+id)&&$('#'+id).value||'').trim();
@@ -1634,6 +1653,77 @@ function modalMovOld(){
 }
 
 /* ================= AJUSTES ================= */
+function renderVisitas(){
+  $('#view').innerHTML = `<div class="hd"><h1>Visitas al cotizador</h1><div class="sp"></div>
+    <button class="btn gh sm" id="btnRefV">🔄 Actualizar</button></div>
+    <div class="load"><div class="spin"></div>Cargando estadísticas…</div>`;
+  $('#btnRefV') && $('#btnRefV').addEventListener('click', renderVisitas);
+  cargarVisitas();
+}
+async function cargarVisitas(){
+  let ev=[];
+  try{ ev = await pbAll('visitas', '&fields=tipo,dia,created'); }
+  catch(e){ $('#view').querySelector('.load').outerHTML='<div class="card"><div class="empty"><div class="ic">📈</div>No se pudieron cargar las visitas.<br>'+esc(e.message)+'</div></div>'; return; }
+
+  const hoyStr=hoyISO();
+  const d=new Date(); const semAtras=new Date(d); semAtras.setDate(d.getDate()-6);
+  const mesStr=hoyStr.slice(0,7);
+  const cuenta=(tipo, filtro)=>ev.filter(e=>e.tipo===tipo && filtro(e.dia)).length;
+  const enSemana=dia=>{ const x=new Date(dia+'T00:00:00'); return x>=new Date(semAtras.toISOString().slice(0,10)+'T00:00:00'); };
+
+  const vHoy=cuenta('visita',x=>x===hoyStr), cHoy=cuenta('cotiza',x=>x===hoyStr), wHoy=cuenta('whatsapp',x=>x===hoyStr);
+  const vSem=cuenta('visita',enSemana), cSem=cuenta('cotiza',enSemana), wSem=cuenta('whatsapp',enSemana);
+  const vMes=cuenta('visita',x=>x.startsWith(mesStr)), cMes=cuenta('cotiza',x=>x.startsWith(mesStr)), wMes=cuenta('whatsapp',x=>x.startsWith(mesStr));
+  const vTot=ev.filter(e=>e.tipo==='visita').length, cTot=ev.filter(e=>e.tipo==='cotiza').length, wTot=ev.filter(e=>e.tipo==='whatsapp').length;
+  const conv = vMes ? (wMes/vMes) : 0;
+
+  // serie últimos 14 días
+  const dias=[];
+  for(let i=13;i>=0;i--){ const x=new Date(); x.setDate(x.getDate()-i);
+    const k=x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0');
+    dias.push({k, lbl:x.getDate()+'/'+(x.getMonth()+1),
+      v:ev.filter(e=>e.tipo==='visita'&&e.dia===k).length,
+      w:ev.filter(e=>e.tipo==='whatsapp'&&e.dia===k).length}); }
+
+  $('#view').innerHTML = `<div class="hd"><h1>Visitas al cotizador</h1><div class="sp"></div>
+    <button class="btn gh sm" id="btnRefV">🔄 Actualizar</button></div>
+  <div class="kpis">
+    <div class="kpi b"><div class="l">Visitas hoy</div><div class="v">${vHoy}</div><div class="d">esta semana ${vSem} · mes ${vMes}</div></div>
+    <div class="kpi a"><div class="l">Cotizaciones armadas</div><div class="v">${cMes}</div><div class="d">este mes · hoy ${cHoy}</div></div>
+    <div class="kpi c"><div class="l">Enviadas por WhatsApp</div><div class="v">${wMes}</div><div class="d">este mes · hoy ${wHoy}</div></div>
+    <div class="kpi"><div class="l">Conversión del mes</div><div class="v">${pct(conv)}</div><div class="d">visitas que escriben a WhatsApp</div></div>
+  </div>
+
+  <div class="card" style="margin-top:14px">
+    <div class="ch"><h2>Visitas por día</h2><span class="tag">últimos 14 días</span></div>
+    <div class="cb">${barVisitas(dias)}
+      <div class="lg"><span><i style="background:#14233f"></i>Visitas</span><span><i style="background:#25d366"></i>WhatsApp</span></div></div>
+  </div>
+
+  <div class="card" style="margin-top:14px">
+    <div class="ch"><h2>Resumen del embudo</h2></div>
+    <div class="cb tbl-wrap"><table><thead><tr><th>Etapa</th><th class="r">Hoy</th><th class="r">Semana</th><th class="r">Mes</th><th class="r">Histórico</th></tr></thead><tbody>
+      <tr><td class="nm">👁️ Visitas</td><td class="r num">${vHoy}</td><td class="r num">${vSem}</td><td class="r num">${vMes}</td><td class="r num">${vTot}</td></tr>
+      <tr><td class="nm">🧾 Cotizaciones armadas</td><td class="r num">${cHoy}</td><td class="r num">${cSem}</td><td class="r num">${cMes}</td><td class="r num">${cTot}</td></tr>
+      <tr><td class="nm">📲 Enviadas por WhatsApp</td><td class="r num">${wHoy}</td><td class="r num">${wSem}</td><td class="r num">${wMes}</td><td class="r num">${wTot}</td></tr>
+    </tbody></table>
+    <p class="note">Una <b>visita</b> es alguien que abre el cotizador. <b>Cotización armada</b> = agregó al menos una llanta. <b>WhatsApp</b> = te envió el pedido (el cliente potencial más valioso). Se cuenta una vez por persona al día.</p>
+    </div></div>`;
+  $('#btnRefV').addEventListener('click', renderVisitas);
+}
+function barVisitas(dias){
+  const w=680,h=220,padL=34,padR=12,padT=12,padB=30, iw=w-padL-padR, ih=h-padT-padB;
+  const max=Math.max(...dias.map(d=>d.v),1);
+  const gap=iw/dias.length, bw=Math.max(6,Math.min(30,gap*0.5));
+  let bars='',labels='',wa='',ticks='';
+  dias.forEach((d,i)=>{ const x=padL+gap*i+gap/2, hv=(d.v/max)*ih;
+    bars+=`<rect x="${(x-bw/2).toFixed(1)}" y="${(padT+ih-hv).toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(hv,0).toFixed(1)}" rx="3" fill="#14233f"><title>${d.lbl}: ${d.v} visitas</title></rect>`;
+    if(d.w>0){ const hw=(d.w/max)*ih; wa+=`<rect x="${(x-bw/2).toFixed(1)}" y="${(padT+ih-hw).toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(hw,0).toFixed(1)}" rx="3" fill="#25d366"><title>${d.lbl}: ${d.w} por WhatsApp</title></rect>`; }
+    labels+=`<text x="${x.toFixed(1)}" y="${h-12}" text-anchor="middle" font-size="10" fill="#6c7a90">${d.lbl}</text>`; });
+  for(let i=0;i<=2;i++){ const y=padT+ih-(ih/2)*i;
+    ticks+=`<line x1="${padL}" y1="${y}" x2="${w-padR}" y2="${y}" stroke="#eef2f7"/><text x="${padL-6}" y="${y+3}" text-anchor="end" font-size="9" fill="#aebfd6">${Math.round(max/2*i)}</text>`; }
+  return `<svg class="chart" viewBox="0 0 ${w} ${h}" preserveAspectRatio="xMidYMid meet">${ticks}${bars}${wa}${labels}</svg>`;
+}
 function renderAjustes(){
   $('#view').innerHTML = `
   <div class="hd"><h1>Ajustes</h1></div>
@@ -1891,7 +1981,7 @@ function render(){
   $('#who').textContent=USER;
   $$('#navIn button').forEach(b=>b.classList.toggle('on', b.dataset.t===TAB));
   ({cotizar:renderCotizar, tablero:renderTablero, ventas:renderVentas,
-    clientes:renderClientes, cartera:renderCartera, movs:renderMovs, ajustes:renderAjustes}[TAB]||renderCotizar)();
+    clientes:renderClientes, cartera:renderCartera, movs:renderMovs, visitas:renderVisitas, ajustes:renderAjustes}[TAB]||renderCotizar)();
 }
 
 /* ================= EVENTOS GLOBALES ================= */
@@ -1902,6 +1992,7 @@ document.addEventListener('click', async e=>{
   /* público */
   if(b=e.target.closest('[data-padd]')){
     const r=DATA.catalogo.find(x=>x.id===b.dataset.padd); if(!r) return;
+    if(!cart.length) trackOnce('cotiza');
     const ex=cart.find(x=>x.id===r.id);
     if(ex) ex.qty++; else cart.push({...r, qty:1});
     renderPublicCart(); toast('Agregado'); return; }
