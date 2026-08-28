@@ -429,18 +429,20 @@ const pbCreate = (col, body) => api(`/api/collections/${col}/records`, {method:'
 function hoyISO(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 async function track(tipo, ref){
   try{
-    await fetch(PB+'/api/collections/visitas/records', {method:'POST',
+    const r = await fetch(PB+'/api/collections/visitas/records', {method:'POST',
       headers:{'Content-Type':'application/json'},
       body: JSON.stringify({tipo, dia:hoyISO(), ref:ref||''})});
-  }catch(e){}
+    return r.ok;
+  }catch(e){ return false; }
 }
-// evita contar la misma visita muchas veces en la sesión
-function trackOnce(tipo, ref){
-  try{ const k='lcm_v_'+tipo+'_'+hoyISO();
+// evita contar la misma visita muchas veces en la sesión (marca SOLO si el registro se guardó)
+async function trackOnce(tipo, ref){
+  let k='';
+  try{ k='lcm_v_'+tipo+'_'+hoyISO();
     if(sessionStorage.getItem(k)) return;
-    sessionStorage.setItem(k,'1');
   }catch(e){}
-  track(tipo, ref);
+  const ok = await track(tipo, ref);
+  if(ok && k){ try{ sessionStorage.setItem(k,'1'); }catch(e){} }
 }
 const pbUpdate = (col, id, body) => api(`/api/collections/${col}/records/${id}`, {method:'PATCH', body:JSON.stringify(body)});
 const pbDelete = (col, id) => api(`/api/collections/${col}/records/${id}`, {method:'DELETE'});
