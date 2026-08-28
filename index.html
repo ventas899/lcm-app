@@ -262,6 +262,43 @@ table.pr td{padding:7px 9px;border-bottom:1px solid #e2e8f0}
 .pr-cond .h{font-family:'Saira Condensed';font-weight:700;color:var(--orange-d);font-size:12px;letter-spacing:.5px;margin-bottom:3px}
 .pr-pay{margin-top:13px;border:2px solid var(--orange);border-radius:8px;padding:10px 14px;font-size:12px;color:var(--navy)}
 .pr-pay b{font-family:'Saira Condensed';color:var(--orange-d)}
+/* ===== PROMOS + SECCIONES PÚBLICAS ===== */
+.promo-wrap{margin-bottom:15px}
+.promo{position:relative;border-radius:15px;overflow:hidden;box-shadow:var(--shadow);background:var(--navy);min-height:150px;display:block}
+.promo img{width:100%;height:100%;object-fit:cover;display:block;position:absolute;inset:0}
+.promo .ov{position:relative;z-index:1;padding:26px 28px;background:linear-gradient(90deg,rgba(12,23,41,.82),rgba(12,23,41,.35) 70%,transparent);min-height:150px;display:flex;flex-direction:column;justify-content:center}
+.promo .ov h3{font-family:'Saira Condensed';font-size:24px;color:#fff;text-transform:uppercase;letter-spacing:.5px;line-height:1.05;max-width:60%}
+.promo .ov p{color:#dbe4f2;font-size:14px;margin-top:6px;max-width:55%}
+.promo.noimg .ov{background:linear-gradient(100deg,var(--navy),#1d3258)}
+.promo-dots{display:flex;gap:6px;justify-content:center;margin-top:9px}
+.promo-dots i{width:7px;height:7px;border-radius:50%;background:var(--line);cursor:pointer}
+.promo-dots i.on{background:var(--orange);width:20px;border-radius:4px}
+@media(max-width:640px){.promo .ov h3,.promo .ov p{max-width:100%}}
+
+.pub-sec{margin-top:16px}
+.pub-sec .eyebrow{font-size:11px;font-weight:700;color:var(--orange-d);text-transform:uppercase;letter-spacing:.12em;margin-bottom:6px}
+.pub-sec h2{font-family:'Saira Condensed';font-size:22px;color:var(--navy);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px}
+.pub-sec .intro{color:var(--muted);font-size:14px;margin-bottom:14px;max-width:70ch}
+.lineas-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+.linea{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px;box-shadow:var(--shadow)}
+.linea .li{width:40px;height:40px;border-radius:10px;background:var(--steel-l);display:grid;place-items:center;margin-bottom:11px}
+.linea .li svg{width:22px;height:22px;stroke:var(--navy);fill:none;stroke-width:2}
+.linea h3{font-family:'Saira Condensed';font-size:17px;color:var(--navy);text-transform:uppercase;letter-spacing:.4px;margin-bottom:5px}
+.linea p{font-size:13px;color:var(--muted);line-height:1.55}
+.why-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px}
+.why{display:flex;gap:12px;background:var(--card);border:1px solid var(--line);border-radius:13px;padding:15px 16px}
+.why .num{font-family:'Saira Condensed';font-size:22px;color:var(--orange);line-height:1}
+.why h4{font-size:14px;color:var(--navy);margin-bottom:3px}
+.why p{font-size:12.5px;color:var(--muted);line-height:1.5}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chips .c{background:#fff;border:1px solid var(--line);border-radius:20px;padding:7px 14px;font-size:13px;font-weight:600;color:var(--navy)}
+.pay-row{display:flex;flex-wrap:wrap;gap:10px}
+.pay-row .p{display:flex;align-items:center;gap:9px;background:#fff;border:1px solid var(--line);border-radius:11px;padding:12px 16px;font-size:13.5px;font-weight:600;color:var(--navy)}
+.pay-row .p svg{width:20px;height:20px;stroke:var(--orange);fill:none;stroke-width:2}
+.pub-foot{text-align:center;color:var(--muted);font-size:12.5px;padding:24px 0 8px;line-height:1.8}
+.pub-cta{background:linear-gradient(100deg,var(--navy),#1d3258);border-radius:15px;padding:26px;text-align:center;color:#fff;margin-top:16px}
+.pub-cta h2{font-family:'Saira Condensed';font-size:24px;color:#fff;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px}
+.pub-cta p{color:#cdd8ea;font-size:14px;margin-bottom:16px}
 </style>
 </head>
 <body>
@@ -331,6 +368,7 @@ const $$ = s => [...document.querySelectorAll(s)];
 let TOKEN='', USER='', UID='', UCOL='users', TAB='cotizar';
 let DATA = {productos:[], catalogo:[], clientes:[], ventas:[], egresos:[], ingresos:[], cartera:[], cotizaciones:[]};
 let cart=[], modo='comercial', plazoM=0, metodo='efectivo';
+let plazoLibre=false, plazoDiasLibre=120;
 let SET = {tasa:0.015, prima:0.01, round:1000, addi:0.065*1.19, mp:0.06, util:0.30, pctSanti:0.55};
 
 /* ================= UTILIDADES ================= */
@@ -436,6 +474,8 @@ async function doAuth(mail, pass){
 }
 
 /* ================= PRECIOS ================= */
+function plazoMeses(){ return plazoLibre ? Math.max(0, plazoDiasLibre/30) : plazoM; }
+function plazoDias(){ return plazoLibre ? Math.max(0, Math.round(plazoDiasLibre)) : plazoM*30; }
 function plazoFactor(m){ return m<=0 ? 1 : (1 + SET.tasa*m + SET.prima); }
 function priceFor(v, m){ const R=SET.round||1; return Math.round(v*plazoFactor(m)/R)*R; }
 function pisoFor(c, m){ const R=SET.round||1; return Math.round(c*plazoFactor(m)/R)*R; }
@@ -445,10 +485,10 @@ function grossUnit(base, c){ const f=(c>0&&c<1)?1/(1-c):1; const R=SET.round||1;
 function metodoLabel(m){ return m==='addi'?'Addi':(m==='mp'?'tarjeta de crédito':'efectivo / transferencia'); }
 const isLic = () => modo==='licitacion';
 const refOf = it => it.manual ? it : (DATA.productos.find(p=>p.id===it.pid) || {descripcion:'—',marca:'',costo:0,venta:0});
-function autoBase(r){ return isLic() ? (r.costo?licUnit(r.costo):(r.venta||0)) : priceFor(r.venta||0, plazoM); }
+function autoBase(r){ return isLic() ? (r.costo?licUnit(r.costo):(r.venta||0)) : priceFor(r.venta||0, plazoMeses()); }
 function lineBase(it){ return (it.price!=null) ? it.price : autoBase(refOf(it)); }
 function lineClient(it){ const b=lineBase(it); return isLic()? b : grossUnit(b, methodCom()); }
-function plazoLbl(){ return plazoM<=0 ? 'contado' : plazoM*30+' días'; }
+function plazoLbl(){ const d=plazoDias(); return d<=0 ? 'contado' : d+' días'; }
 
 /* ================= AJUSTES ================= */
 function loadSet(){ try{ const s=JSON.parse(localStorage.getItem('lcm_set')||'null'); if(s) SET={...SET,...s}; }catch(e){} }
@@ -516,6 +556,7 @@ function renderPublic(){
   $('#topSub').textContent='Llantas Camión Medellín';
   $('#btnAccess').textContent='Ingresar'; $('#who').textContent='';
   $('#view').innerHTML = `
+  <div class="promo-wrap" id="promoWrap"></div>
   <div class="grid g3">
     <section class="card">
       <div class="ch"><h2>Busca tu llanta</h2><span class="tag">${DATA.catalogo.length} referencias</span></div>
@@ -532,9 +573,88 @@ function renderPublic(){
       <div class="ch"><h2>Tu cotización</h2><span class="tag" id="pPill">0 ítems</span></div>
       <div class="cb"><div id="pitems"></div><div id="pbody"></div></div>
     </section>
-  </div>`;
+  </div>
+  ${publicSections()}`;
   $('#pq').addEventListener('input', ()=>{ clearTimeout(window._pt); window._pt=setTimeout(renderPublicResults,90); });
-  renderPublicResults(); renderPublicCart();
+  $('#yr') && ($('#yr').textContent=new Date().getFullYear());
+  renderPublicResults(); renderPublicCart(); renderPromos();
+}
+async function renderPromos(){
+  const box=$('#promoWrap'); if(!box) return;
+  let promos=[];
+  try{ promos=(await pbAll('promos')).filter(p=>p.activo!==false).sort((a,b)=>(+a.orden||0)-(+b.orden||0)); }catch(e){}
+  if(!promos.length){ box.innerHTML=''; return; }
+  const slide=p=>{ const inner=`<div class="ov"><h3>${esc(p.titulo||'')}</h3>${p.subtitulo?`<p>${esc(p.subtitulo)}</p>`:''}</div>`;
+    const body=`${p.imagen?`<img src="${esc(p.imagen)}" alt="${esc(p.titulo||'Promoción')}" onerror="this.style.display='none'">`:''}${inner}`;
+    return p.link ? `<a class="promo${p.imagen?'':' noimg'}" href="${esc(p.link)}" target="_blank" rel="noopener">${body}</a>`
+                  : `<div class="promo${p.imagen?'':' noimg'}">${body}</div>`; };
+  if(promos.length===1){ box.innerHTML=slide(promos[0]); return; }
+  box.innerHTML=`<div id="promoSlide">${slide(promos[0])}</div>
+    <div class="promo-dots">${promos.map((_,i)=>`<i class="${i===0?'on':''}" data-pd="${i}"></i>`).join('')}</div>`;
+  let idx=0;
+  const go=i=>{ idx=(i+promos.length)%promos.length; $('#promoSlide').innerHTML=slide(promos[idx]);
+    $$('.promo-dots i').forEach((d,j)=>d.classList.toggle('on', j===idx)); };
+  clearInterval(window._promoT);
+  window._promoT=setInterval(()=>{ if($('#promoSlide')) go(idx+1); else clearInterval(window._promoT); }, 5000);
+  box.querySelectorAll('[data-pd]').forEach(d=>d.addEventListener('click', ()=>go(+d.dataset.pd)));
+}
+function publicSections(){
+  return `
+  <section class="pub-sec">
+    <div class="eyebrow">Qué distribuimos</div>
+    <h2>Una línea para cada tipo de operación</h2>
+    <p class="intro">Desde el camión que mueve tu carga hasta la maquinaria que mueve la obra. Te asesoramos para encontrar la medida y referencia exacta.</p>
+    <div class="lineas-grid">
+      <div class="linea"><div class="li"><svg viewBox="0 0 24 24"><path stroke-linecap="round" d="M3 17h2m14 0h2M5 17a2 2 0 104 0 2 2 0 00-4 0zm10 0a2 2 0 104 0 2 2 0 00-4 0zM3 17V7h13l3 4v6"/></svg></div>
+        <h3>Camión y carga pesada</h3><p>Radiales para tractocamión, volqueta y bus. Direccional, tracción y remolque para flotas que no pueden parar.</p></div>
+      <div class="linea"><div class="li"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path stroke-linecap="round" d="M12 3v3m0 12v3m9-9h-3M6 12H3"/></svg></div>
+        <h3>OTR, agrícola e industrial</h3><p>Maquinaria amarilla, retroexcavadora, montacargas y tractores. Referencias especiales bajo pedido.</p></div>
+      <div class="linea"><div class="li"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/></svg></div>
+        <h3>Vehículo y SUV</h3><p>Automóvil, camioneta y SUV de marcas reconocidas, con opciones económicas, recomendadas y premium.</p></div>
+      <div class="linea"><div class="li"><svg viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3s6 5.7 6 10a6 6 0 11-12 0c0-4.3 6-10 6-10z"/></svg></div>
+        <h3>Lubricantes</h3><p>Aceites para motor, transmisión e hidráulicos, en presentaciones para vehículo, flota e industria.</p></div>
+    </div>
+  </section>
+
+  <section class="pub-sec">
+    <div class="eyebrow">Por qué con nosotros</div>
+    <h2>No vendemos llantas. Resolvemos rodamiento.</h2>
+    <div class="why-grid">
+      <div class="why"><span class="num">01</span><div><h4>Cobertura nacional</h4><p>Despachamos a todo el país, para entregar más rápido en cualquier región.</p></div></div>
+      <div class="why"><span class="num">02</span><div><h4>Asesoría que sí sabe</h4><p>Te ayudamos a elegir la medida y referencia correcta según tu vehículo, uso y presupuesto.</p></div></div>
+      <div class="why"><span class="num">03</span><div><h4>Proveedor formal</h4><p>Facturación electrónica y documentación al día. Listos para empresas, flotas y entidades.</p></div></div>
+      <div class="why"><span class="num">04</span><div><h4>Precio competitivo</h4><p>Marcas de varias gamas para ofrecerte la mejor relación precio–rendimiento.</p></div></div>
+    </div>
+  </section>
+
+  <section class="pub-sec">
+    <div class="eyebrow">Marcas que manejamos</div>
+    <h2>Variedad para cada gama y presupuesto</h2>
+    <div class="chips">${['Kumho','Aufine','Zeta','Maxxis','Triangle','Ovation','Gallant','Fullrun','Ralson','Joyall','Vikrant','Ansu','Wosen','Ascenso','DRC','Lykeen','Ultra Force','Neomaster','Starmax'].map(m=>`<span class="c">${m}</span>`).join('')}</div>
+  </section>
+
+  <section class="pub-sec">
+    <div class="eyebrow">Medios de pago</div>
+    <h2>Paga fácil, como más te convenga</h2>
+    <div class="pay-row">
+      <div class="p"><svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>Siigo Pay</div>
+      <div class="p"><svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>Mercado Pago</div>
+      <div class="p"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path stroke-linecap="round" d="M12 8v8m-4-4h8"/></svg>ADDI · a cuotas</div>
+      <div class="p"><svg viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 7h18v10H3zM7 7V5h10v2"/></svg>Crédito directo</div>
+    </div>
+  </section>
+
+  <div class="pub-cta">
+    <h2>¿Listo para cotizar?</h2>
+    <p>Escríbenos y te asesoramos con la medida exacta para tu operación.</p>
+    <a class="btn wa" href="https://wa.me/${WA}" target="_blank" rel="noopener" style="display:inline-flex">📲 Cotizar por WhatsApp</a>
+  </div>
+
+  <div class="pub-foot">
+    ${esc(EMPRESA.nombre)} · Cobertura nacional<br>
+    ${esc(EMPRESA.contacto)}<br>
+    © <span id="yr"></span> · No responsable de IVA
+  </div>`;
 }
 function renderPublicResults(){
   const box=$('#pres'); if(!box) return;
@@ -615,8 +735,15 @@ function renderCotizar(){
       <div class="cb">
         <div id="plazoWrap" class="${isLic()?'hide':''}">
           <label style="font-size:10.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.6px">Plazo de pago</label>
-          <div class="seg" id="segPlazo" style="margin:5px 0 11px;display:flex">
-            ${[[0,'Contado'],[1,'30 días'],[2,'60 días'],[3,'90 días']].map(([m,l])=>`<button data-p="${m}" class="${plazoM===m?'on':''}">${l}</button>`).join('')}
+          <div class="seg" id="segPlazo" style="margin:5px 0 11px;display:flex;flex-wrap:wrap">
+            ${[[0,'Contado'],[1,'30'],[2,'60'],[3,'90']].map(([m,l])=>`<button data-p="${m}" class="${plazoM===m&&!plazoLibre?'on':''}">${l}${m?'d':''}</button>`).join('')}
+            <button data-p="x" class="${plazoLibre?'on':''}">Otro…</button>
+          </div>
+          <div id="plazoLibreWrap" class="${plazoLibre?'':'hide'}" style="margin:-4px 0 11px">
+            <div style="display:flex;align-items:center;gap:8px">
+              <input id="plazoDias" type="number" inputmode="numeric" min="1" value="${plazoLibre?plazoDiasLibre:120}" style="width:100px;padding:9px 10px;border:1px solid var(--line);border-radius:9px;background:#fbfcfe">
+              <span style="font-size:12.5px;color:var(--muted)">días de plazo</span>
+            </div>
           </div>
           <label style="font-size:10.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.6px">Medio de pago</label>
           <div class="seg" id="segPago" style="margin:5px 0 13px;display:flex">
@@ -672,7 +799,7 @@ function renderCart(){
     const r=refOf(it), over=(it.price!=null);
     const base=lineBase(it), cu=lineClient(it), lt=cu*it.qty;
     total+=lt; baseTotal+=base*it.qty; costoTotal+=(r.costo||0)*it.qty;
-    const ref = lic ? `util ${pct(SET.util)}` : `<span class="piso">piso ${r.costo?fmt(pisoFor(r.costo,plazoM)):'s/d'}</span>`;
+    const ref = lic ? `util ${pct(SET.util)}` : `<span class="piso">piso ${r.costo?fmt(pisoFor(r.costo,plazoMeses())):'s/d'}</span>`;
     const mod = over ? ' · <span class="mod">modificado</span>' : '';
     const sur = (!lic && c>0) ? ` · <span class="mod">${metodo==='mp'?'tarjeta':'Addi'}: ${fmt(cu)} c/u</span>` : '';
     return `<div class="it">
@@ -757,7 +884,7 @@ async function guardarCotizacion(silent){
   const body={
     numero:'COT-'+Date.now().toString().slice(-6),
     cliente_nombre:($('#c_cli').value||'').trim(), modo, estado:'enviada',
-    plazo_dias: plazoM*30, medio_pago: metodoLabel(metodo),
+    plazo_dias: plazoDias(), medio_pago: metodoLabel(metodo),
     items: JSON.stringify(cart.map(it=>{ const r=refOf(it);
       return {d:r.descripcion, m:r.marca, q:it.qty, pu:lineClient(it), costo:r.costo||0}; })),
     total:t.cliente, costo_total:t.costo, utilidad:t.util,
@@ -1213,13 +1340,16 @@ function modalEditVenta(id){
       <div class="fld"><label>Intereses</label><input id="e_int" type="number" value="${v?(+v.intereses||0):0}"></div>
       <div class="fld"><label>Costo mercancía *</label><input id="e_cos" type="number" value="${v?(+v.valor_costo||0):0}"></div>
       <div class="fld"><label>Forma de pago</label><select id="e_fp">
-        ${[['contado','Contado'],['credito_30','Crédito 30'],['credito_60','Crédito 60'],['credito_90','Crédito 90'],['tarjeta','Tarjeta'],['addi','Addi'],['credito_propio','Crédito propio']].map(([k,t])=>`<option value="${k}" ${v&&v.forma_pago===k?'selected':''}>${t}</option>`).join('')}</select></div>
+        ${[['contado','Contado'],['credito_30','Crédito 30 días'],['credito_60','Crédito 60 días'],['credito_90','Crédito 90 días'],['credito_120','Crédito 120 días'],['credito_150','Crédito 150 días'],['credito_180','Crédito 180 días'],['tarjeta','Tarjeta'],['addi','Addi'],['credito_propio','Crédito propio']].map(([k,t])=>`<option value="${k}" ${v&&v.forma_pago===k?'selected':''}>${t}</option>`).join('')}</select></div>
       <div class="fld"><label>Estado de pago</label><select id="e_ep">
         ${[['pagada','Pagada'],['pendiente','Pendiente'],['parcial','Parcial']].map(([k,t])=>`<option value="${k}" ${v&&v.estado_pago===k?'selected':''}>${t}</option>`).join('')}</select></div>
     </div>
     <div id="e_calc" style="background:var(--steel-l);border-radius:10px;padding:11px 13px;font-size:12.5px;color:var(--navy);line-height:1.8"></div>
     ${!v?`<label style="display:flex;align-items:center;gap:8px;margin-top:11px;font-size:13px">
-      <input type="checkbox" id="e_car" style="width:17px;height:17px;accent-color:var(--orange)"> Registrar también en cartera</label>`:''}`,
+      <input type="checkbox" id="e_car" style="width:17px;height:17px;accent-color:var(--orange)"> Registrar también en cartera</label>
+    <div id="e_vencWrap" class="hide" style="margin-top:9px;max-width:220px">
+      <div class="fld" style="margin-bottom:0"><label>Fecha de vencimiento de la factura</label><input id="e_venc" type="date"></div>
+    </div>`:''}`,
     `${v?`<button class="btn dg" id="eDel">Eliminar</button>`:''}
      <button class="btn gh" id="eCancel">Cancelar</button>
      <button class="btn acc" id="eSave">${v?'Guardar cambios':'Guardar venta'}</button>`, true);
@@ -1228,7 +1358,16 @@ function modalEditVenta(id){
     $('#e_calc').innerHTML=`Utilidad: <b>${fmt(u)}</b> · margen ${val?pct(u/val):'—'}<br>Santiago: <b>${fmt(sa)}</b> · Luis: <b>${fmt(u-sa)}</b>`; };
   ['e_val','e_int','e_cos'].forEach(x=>$('#'+x).addEventListener('input', calc));
   $('#e_cli').addEventListener('change', ()=>fillCliente($('#e_cli').value,'e_'));
-  const ep=$('#e_ep'); if(ep && $('#e_car')) ep.addEventListener('change', e=>{ $('#e_car').checked = e.target.value!=='pagada'; });
+  const diasPorForma=fp=>({credito_30:30,credito_60:60,credito_90:90,credito_120:120,credito_150:150,credito_180:180})[fp]||30;
+  const setVenc=()=>{ const el=$('#e_venc'); if(el && !el.value){ const base=new Date($('#e_fec').value||iso(hoy()));
+    base.setDate(base.getDate()+diasPorForma($('#e_fp').value)); el.value=iso(base); } };
+  const toggleVenc=()=>{ const w=$('#e_vencWrap'); if(!w) return;
+    const on=$('#e_car')&&$('#e_car').checked; w.classList.toggle('hide', !on); if(on) setVenc(); };
+  if($('#e_car')){
+    $('#e_car').addEventListener('change', toggleVenc);
+    const ep=$('#e_ep'); if(ep) ep.addEventListener('change', e=>{ $('#e_car').checked = e.target.value!=='pagada'; toggleVenc(); });
+    const fp=$('#e_fp'); if(fp) fp.addEventListener('change', ()=>{ const el=$('#e_venc'); if(el) el.value=''; setVenc(); });
+  }
   calc();
   $('#eCancel').addEventListener('click', closeModal);
   if(v) $('#eDel').addEventListener('click', async ()=>{
@@ -1267,10 +1406,12 @@ async function saveVentaEdit(v){
     else {
       const r=await pbCreate('ventas', body); r._d=new Date(r.fecha); DATA.ventas.push(r);
       if($('#e_car') && $('#e_car').checked){
-        const venc=new Date(); venc.setDate(venc.getDate()+30);
+        let vencISO=g('e_venc');
+        if(!vencISO){ const venc=new Date(g('e_fec')||iso(hoy())); venc.setDate(venc.getDate()+30); vencISO=iso(venc); }
+        const vencida = new Date(vencISO) < hoy();
         await pbCreate('cartera', {cliente:cl.id, cliente_nombre:nombre, venta:r.id, factura:g('e_fac'),
-          fecha_venta:pbDate(g('e_fec')), fecha_vence:pbDate(iso(venc)), valor_total:val+i, abonado:0,
-          saldo:val+i, estado:'al_dia', notas:g('e_desc')});
+          fecha_venta:pbDate(g('e_fec')), fecha_vence:pbDate(vencISO), valor_total:val+i, abonado:0,
+          saldo:val+i, estado: vencida?'vencida':'al_dia', notas:g('e_desc')});
         DATA.cartera=await pbAll('cartera');
       }
       toast('Venta registrada');
@@ -1748,6 +1889,12 @@ function renderAjustes(){
       <p class="note">Tienes <b>${DATA.productos.length}</b> referencias cargadas. Después de subir la lista, no olvides <b>publicar el catálogo</b> para que el cliente vea los precios nuevos.</p>
     </div></div>
 
+    <div class="card"><div class="ch"><h2>Promociones del cotizador</h2><span class="tag" id="promoCount"></span></div><div class="cb">
+      <button class="btn acc blk" id="btnPromoNew" style="margin-bottom:9px">➕ Nueva promoción / banner</button>
+      <div id="promoList"></div>
+      <p class="note">Los banners aparecen arriba del cotizador público. Puedes ponerles imagen (con un enlace de imagen), título y un enlace al tocar. Actívalos o desactívalos sin borrarlos.</p>
+    </div></div>
+
     <div class="card"><div class="ch"><h2>Respaldo y catálogo</h2></div><div class="cb">
       <button class="btn pri blk" id="btnBackup" style="margin-bottom:9px">⬇️ Descargar respaldo completo en Excel</button>
       <p class="note" style="margin-bottom:15px">Un archivo con una hoja por módulo: ventas, clientes, cartera, egresos, ingresos y productos.</p>
@@ -1773,6 +1920,56 @@ function renderAjustes(){
   $('#btnRef').addEventListener('click', async ()=>{ toast('Recargando…'); await loadAll(); await loadCatalogo(); render(); toast('Datos actualizados'); });
   $('#btnPub').addEventListener('click', publicarCatalogo);
   $('#btnLista').addEventListener('click', modalLista);
+  $('#btnPromoNew').addEventListener('click', ()=>modalPromo(null));
+  renderPromoList();
+}
+async function renderPromoList(){
+  const box=$('#promoList'); if(!box) return;
+  let promos=[];
+  try{ promos=(await pbAll('promos')).sort((a,b)=>(+a.orden||0)-(+b.orden||0)); }catch(e){}
+  const cnt=$('#promoCount'); if(cnt) cnt.textContent=promos.length+(promos.length===1?' banner':' banners');
+  if(!promos.length){ box.innerHTML='<p class="note" style="margin-bottom:9px">Aún no hay promociones. Crea una para que aparezca en el cotizador.</p>'; return; }
+  box.innerHTML=promos.map(p=>`<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid #eef2f7">
+    <div style="width:44px;height:34px;border-radius:7px;background:${p.imagen?`url('${esc(p.imagen)}') center/cover`:'var(--steel-l)'};flex-shrink:0"></div>
+    <div style="flex:1;min-width:0"><div style="font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(p.titulo||'(sin título)')}</div>
+      <div style="font-size:11px;color:var(--muted)">${p.activo!==false?'<span style="color:var(--ok)">● activa</span>':'○ inactiva'}${p.orden?' · orden '+p.orden:''}</div></div>
+    <button class="btn gh sm" data-promoedit="${p.id}">Editar</button></div>`).join('');
+  box.querySelectorAll('[data-promoedit]').forEach(b=>b.addEventListener('click', ()=>{
+    modalPromo(promos.find(x=>x.id===b.dataset.promoedit)); }));
+}
+function modalPromo(p){
+  const g=(k,d)=>esc(p&&p[k]!=null&&p[k]!==''?p[k]:(d||''));
+  openModal(p?'Editar promoción':'Nueva promoción', `
+    <div class="fld"><label>Título *</label><input id="pr_tit" value="${g('titulo')}" placeholder="Ej: Promo llantas de camión"></div>
+    <div class="fld"><label>Subtítulo</label><input id="pr_sub" value="${g('subtitulo')}" placeholder="Ej: Hasta 15% de descuento este mes"></div>
+    <div class="fld"><label>Enlace de la imagen (URL)</label><input id="pr_img" value="${g('imagen')}" placeholder="https://…/promo.jpg"></div>
+    <div class="fld"><label>Enlace al tocar (opcional)</label><input id="pr_link" value="${g('link')}" placeholder="https://wa.me/${WA}"></div>
+    <div class="fgrid">
+      <div class="fld"><label>Orden</label><input id="pr_ord" type="number" value="${p?(+p.orden||0):0}"></div>
+      <div class="fld"><label>Estado</label><select id="pr_act">
+        <option value="1" ${!p||p.activo!==false?'selected':''}>Activa</option>
+        <option value="0" ${p&&p.activo===false?'selected':''}>Inactiva</option></select></div>
+    </div>
+    <p class="note">💡 Para la imagen necesitas un <b>enlace</b> (URL) que termine en .jpg o .png. Puedes subirla a un servicio gratis como <b>postimages.org</b> o <b>imgur.com</b> y pegar aquí el enlace directo. Tamaño ideal: horizontal, tipo 1200×400.</p>`,
+    `${p?`<button class="btn dg" id="prDel">Eliminar</button>`:''}
+     <button class="btn gh" id="prCancel">Cancelar</button>
+     <button class="btn acc" id="prSave">${p?'Guardar':'Crear'}</button>`);
+  $('#prCancel').addEventListener('click', closeModal);
+  if(p) $('#prDel').addEventListener('click', async ()=>{
+    if(!confirm('¿Eliminar esta promoción?')) return;
+    try{ await pbDelete('promos', p.id); closeModal(); toast('Promoción eliminada'); renderPromoList(); }
+    catch(x){ toast('Error: '+x.message, true); } });
+  $('#prSave').addEventListener('click', async ()=>{
+    const tit=($('#pr_tit').value||'').trim();
+    if(!tit){ toast('Escribe el título', true); return; }
+    const body={titulo:tit, subtitulo:($('#pr_sub').value||'').trim(), imagen:($('#pr_img').value||'').trim(),
+      link:($('#pr_link').value||'').trim(), orden:Math.round(num($('#pr_ord').value)), activo:$('#pr_act').value==='1'};
+    try{
+      if(p){ await pbUpdate('promos', p.id, body); toast('Promoción actualizada'); }
+      else { await pbCreate('promos', body); toast('Promoción creada'); }
+      closeModal(); renderPromoList();
+    }catch(x){ toast('Error: '+x.message, true); }
+  });
 }
 function modalPass(){
   if(!UID){ toast('Vuelve a iniciar sesión para cambiar la contraseña', true); return; }
@@ -2004,8 +2201,12 @@ document.addEventListener('click', async e=>{
   if(e.target.id==='pPdf'){ buildPublicPrint(); window.print(); return; }
   /* cotizador */
   if(b=e.target.closest('#segModo button')){ modo=b.dataset.m; render(); return; }
-  if(b=e.target.closest('#segPlazo button')){ plazoM=+b.dataset.p;
+  if(b=e.target.closest('#segPlazo button')){
+    if(b.dataset.p==='x'){ plazoLibre=true; }
+    else { plazoLibre=false; plazoM=+b.dataset.p; }
     $$('#segPlazo button').forEach(x=>x.classList.remove('on')); b.classList.add('on');
+    const w=$('#plazoLibreWrap'); if(w) w.classList.toggle('hide', !plazoLibre);
+    if(plazoLibre){ const el=$('#plazoDias'); if(el){ el.focus(); el.select(); } }
     renderResults(); renderCart(); return; }
   if(b=e.target.closest('#segPago button')){ metodo=b.dataset.g;
     $$('#segPago button').forEach(x=>x.classList.remove('on')); b.classList.add('on'); renderCart(); return; }
@@ -2072,6 +2273,9 @@ document.addEventListener('input', e=>{
     }, 280);
     return;
   }
+  if(e.target.id==='plazoDias'){ plazoDiasLibre=Math.max(0, parseInt(e.target.value)||0);
+    clearTimeout(window._pd); window._pd=setTimeout(()=>{ renderResults(); renderCart();
+      const el=$('#plazoDias'); if(el){ el.focus(); } }, 350); return; }
   if(e.target.dataset.qty!==undefined){ const k=+e.target.dataset.qty;
     cart[k].qty=Math.max(1, parseInt(e.target.value)||1); renderCart(); }
   else if(e.target.dataset.pqty!==undefined){ const k=+e.target.dataset.pqty;
