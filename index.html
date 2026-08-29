@@ -270,6 +270,9 @@ table.pr td{padding:7px 9px;border-bottom:1px solid #e2e8f0}
 .promo .ov h3{font-family:'Saira Condensed';font-size:24px;color:#fff;text-transform:uppercase;letter-spacing:.5px;line-height:1.05;max-width:60%}
 .promo .ov p{color:#dbe4f2;font-size:14px;margin-top:6px;max-width:55%}
 .promo.noimg .ov{background:linear-gradient(100deg,var(--navy),#1d3258)}
+.promo.plain{aspect-ratio:3/1;min-height:0}
+.promo.plain img{position:relative}
+@supports not (aspect-ratio:3/1){.promo.plain{min-height:0;padding-bottom:33.3%;position:relative}.promo.plain img{position:absolute}}
 .promo-dots{display:flex;gap:6px;justify-content:center;margin-top:9px}
 .promo-dots i{width:7px;height:7px;border-radius:50%;background:var(--line);cursor:pointer}
 .promo-dots i.on{background:var(--orange);width:20px;border-radius:4px}
@@ -586,10 +589,13 @@ async function renderPromos(){
   let promos=[];
   try{ promos=(await pbAll('promos')).filter(p=>p.activo!==false).sort((a,b)=>(+a.orden||0)-(+b.orden||0)); }catch(e){}
   if(!promos.length){ box.innerHTML=''; return; }
-  const slide=p=>{ const inner=`<div class="ov"><h3>${esc(p.titulo||'')}</h3>${p.subtitulo?`<p>${esc(p.subtitulo)}</p>`:''}</div>`;
+  const slide=p=>{
+    const tieneTexto = (p.titulo&&p.titulo.trim()) || (p.subtitulo&&p.subtitulo.trim());
+    const inner = tieneTexto ? `<div class="ov">${p.titulo?`<h3>${esc(p.titulo)}</h3>`:''}${p.subtitulo?`<p>${esc(p.subtitulo)}</p>`:''}</div>` : '';
     const body=`${p.imagen?`<img src="${esc(p.imagen)}" alt="${esc(p.titulo||'Promoción')}" onerror="this.style.display='none'">`:''}${inner}`;
-    return p.link ? `<a class="promo${p.imagen?'':' noimg'}" href="${esc(p.link)}" target="_blank" rel="noopener">${body}</a>`
-                  : `<div class="promo${p.imagen?'':' noimg'}">${body}</div>`; };
+    const cls = 'promo'+(p.imagen?'':' noimg')+(tieneTexto?'':' plain');
+    return p.link ? `<a class="${cls}" href="${esc(p.link)}" target="_blank" rel="noopener">${body}</a>`
+                  : `<div class="${cls}">${body}</div>`; };
   if(promos.length===1){ box.innerHTML=slide(promos[0]); return; }
   box.innerHTML=`<div id="promoSlide">${slide(promos[0])}</div>
     <div class="promo-dots">${promos.map((_,i)=>`<i class="${i===0?'on':''}" data-pd="${i}"></i>`).join('')}</div>`;
@@ -1942,7 +1948,7 @@ async function renderPromoList(){
 function modalPromo(p){
   const g=(k,d)=>esc(p&&p[k]!=null&&p[k]!==''?p[k]:(d||''));
   openModal(p?'Editar promoción':'Nueva promoción', `
-    <div class="fld"><label>Título *</label><input id="pr_tit" value="${g('titulo')}" placeholder="Ej: Promo llantas de camión"></div>
+    <div class="fld"><label>Título (opcional si la imagen ya trae texto)</label><input id="pr_tit" value="${g('titulo')}" placeholder="Ej: Promo llantas de camión"></div>
     <div class="fld"><label>Subtítulo</label><input id="pr_sub" value="${g('subtitulo')}" placeholder="Ej: Hasta 15% de descuento este mes"></div>
     <div class="fld"><label>Enlace de la imagen (URL)</label><input id="pr_img" value="${g('imagen')}" placeholder="https://…/promo.jpg"></div>
     <div class="fld"><label>Enlace al tocar (opcional)</label><input id="pr_link" value="${g('link')}" placeholder="https://wa.me/${WA}"></div>
@@ -1963,7 +1969,8 @@ function modalPromo(p){
     catch(x){ toast('Error: '+x.message, true); } });
   $('#prSave').addEventListener('click', async ()=>{
     const tit=($('#pr_tit').value||'').trim();
-    if(!tit){ toast('Escribe el título', true); return; }
+    const img=($('#pr_img').value||'').trim();
+    if(!tit && !img){ toast('Pon al menos una imagen o un título', true); return; }
     const body={titulo:tit, subtitulo:($('#pr_sub').value||'').trim(), imagen:($('#pr_img').value||'').trim(),
       link:($('#pr_link').value||'').trim(), orden:Math.round(num($('#pr_ord').value)), activo:$('#pr_act').value==='1'};
     try{
