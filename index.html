@@ -429,19 +429,17 @@ const pbCreate = (col, body) => api(`/api/collections/${col}/records`, {method:'
 function hoyISO(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 async function track(tipo, ref){
   try{
-    console.log('[LCM track] intentando registrar:', tipo);
     const r = await fetch(PB+'/api/collections/visitas/records', {method:'POST',
       headers:{'Content-Type':'application/json'},
       body: JSON.stringify({tipo, dia:hoyISO(), ref:ref||''})});
-    console.log('[LCM track] respuesta:', r.status, r.ok);
     return r.ok;
-  }catch(e){ console.log('[LCM track] ERROR:', e.message); return false; }
+  }catch(e){ return false; }
 }
 // evita contar la misma visita muchas veces en la sesión (marca SOLO si el registro se guardó)
 async function trackOnce(tipo, ref){
   let k='';
   try{ k='lcm_v_'+tipo+'_'+hoyISO();
-    if(sessionStorage.getItem(k)){ console.log('[LCM track] ya contado hoy en esta sesión:', tipo); return; }
+    if(sessionStorage.getItem(k)) return;
   }catch(e){}
   const ok = await track(tipo, ref);
   if(ok && k){ try{ sessionStorage.setItem(k,'1'); }catch(e){} }
