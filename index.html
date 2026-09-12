@@ -2118,7 +2118,7 @@ function confirmarVentaLic(l){
       // cliente (entidad)
       let cl=DATA.clientes.find(x=>norm(x.nombre)===norm(l.entidad||''));
       if(!cl && l.entidad){ cl=await pbCreate('clientes', {nombre:l.entidad, nit:l.nit_entidad||'',
-        tipo:'entidad', segmento:'estatal'}); DATA.clientes.push(cl); }
+        tipo:'entidad_publica', segmento:'entidad'}); DATA.clientes.push(cl); }
       // venta — fechada en la adjudicación (el mes en que realmente se hizo la venta)
       const vbody={ fecha:pbDate(l.fecha_adjudica||iso(hoy())),
         factura:l.numero||'', cliente:cl?cl.id:'', cliente_nombre:l.entidad||'Entidad',
