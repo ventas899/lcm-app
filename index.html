@@ -346,6 +346,8 @@ table.pr td{padding:7px 9px;border-bottom:1px solid #e2e8f0}
   <button data-t="cotizar" class="on"><span class="ico">🧾</span>Cotizador</button>
   <button data-t="tablero"><span class="ico">📊</span>Tablero</button>
   <button data-t="ventas"><span class="ico">💼</span>Ventas</button>
+  <button data-t="cotizaciones"><span class="ico">📄</span>Cotizaciones</button>
+  <button data-t="licitaciones"><span class="ico">🏛️</span>Licitaciones</button>
   <button data-t="clientes"><span class="ico">👥</span>Clientes</button>
   <button data-t="cartera"><span class="ico">⏳</span>Cartera</button>
   <button data-t="movs"><span class="ico">💸</span>Movimientos</button>
@@ -395,8 +397,15 @@ const num  = v => { const n=parseFloat(String(v==null?'':v).replace(/[^\d.-]/g,'
 const esc  = s => String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const MES  = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
 const hoy  = () => new Date();
-const iso  = d => { const x = d instanceof Date ? d : new Date(d); return isNaN(x)?'':x.toISOString().slice(0,10); };
-const pbDate = s => s ? (s.length<=10 ? s+' 00:00:00.000Z' : s) : '';
+const hoyD = () => { const n=new Date(); return new Date(n.getFullYear(),n.getMonth(),n.getDate()); };
+const iso  = d => { const x = d instanceof Date ? d : new Date(d); if(isNaN(x)) return '';
+  return x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0'); };
+// guarda la fecha fijada al mediodía hora Colombia para que nunca se corra de día al convertir a UTC
+const pbDate = s => { if(!s) return ''; if(s.length>10) return s;
+  return s+' 12:00:00.000Z'; };
+// lee una fecha de PocketBase como fecha local sin corrimiento (toma solo Y-M-D)
+const parseD = s => { if(!s) return null; const m=String(s).slice(0,10).split('-');
+  return m.length===3 ? new Date(+m[0], +m[1]-1, +m[2]) : new Date(s); };
 const sum  = (a,k) => a.reduce((t,x)=>t+(+x[k]||0),0);
 const provDe = e => {
   const p=(e.proveedor||'').trim(); if(p) return p;
@@ -512,15 +521,15 @@ function saveSet(){ try{ localStorage.setItem('lcm_set', JSON.stringify(SET)); }
 /* ================= CARGA ================= */
 async function loadAll(){
   const soft = async (c,x)=>{ try{ return await pbAll(c,x); }catch(e){ return []; } };
-  const [prod, cli, ven, egr, ing, car, cot] = await Promise.all([
+  const [prod, cli, ven, egr, ing, car, cot, lic] = await Promise.all([
     soft('productos'), soft('clientes'), soft('ventas'), soft('egresos'),
-    soft('ingresos'), soft('cartera'), soft('cotizaciones')
+    soft('ingresos'), soft('cartera'), soft('cotizaciones'), soft('licitaciones')
   ]);
   DATA.productos=prod; DATA.clientes=cli; DATA.ventas=ven; DATA.egresos=egr;
-  DATA.ingresos=ing; DATA.cartera=car; DATA.cotizaciones=cot;
-  DATA.ventas.forEach(v=>v._d = v.fecha? new Date(v.fecha):null);
-  DATA.egresos.forEach(v=>v._d = v.fecha? new Date(v.fecha):null);
-  DATA.ingresos.forEach(v=>v._d = v.fecha? new Date(v.fecha):null);
+  DATA.ingresos=ing; DATA.cartera=car; DATA.cotizaciones=cot; DATA.licitaciones=lic;
+  DATA.ventas.forEach(v=>v._d = v.fecha? parseD(v.fecha):null);
+  DATA.egresos.forEach(v=>v._d = v.fecha? parseD(v.fecha):null);
+  DATA.ingresos.forEach(v=>v._d = v.fecha? parseD(v.fecha):null);
 }
 async function loadCatalogo(){
   try{ DATA.catalogo = await pbAll('catalogo'); }
@@ -984,7 +993,7 @@ async function saveVenta(fromCart){
       valor_venta:v, intereses:i, valor_costo:c, utilidad:u, parte_santi:s, parte_luis:l,
       forma_pago:$('#v_fp').value, estado_pago:$('#v_ep').value, proveedor:g('v_prov'), notas:'' };
     const rec = await pbCreate('ventas', body);
-    rec._d = new Date(rec.fecha); DATA.ventas.push(rec);
+    rec._d = parseD(rec.fecha); DATA.ventas.push(rec);
 
     if($('#v_car') && $('#v_car').checked){
       const venc=new Date(); venc.setDate(venc.getDate()+30);
@@ -1136,7 +1145,7 @@ function renderTablero(){
 
   const car=DATA.cartera||[];
   const saldo=sum(car,'saldo');
-  const venc=car.filter(c=>c.saldo>0 && c.fecha_vence && new Date(c.fecha_vence)<hoy());
+  const venc=car.filter(c=>c.saldo>0 && c.fecha_vence && parseD(c.fecha_vence)<hoyD());
   const sPct=util?santi/util:SET.pctSanti, lPct=util?luis/util:1-SET.pctSanti;
 
   $('#view').innerHTML = head + `
@@ -1281,7 +1290,12 @@ function renderVentas(){
       <td class="r num" style="color:var(--ok);font-weight:600">${fmt(v.utilidad)}</td>
       <td><span class="pill ${v.estado_pago==='pagada'?'ok':(v.estado_pago==='parcial'?'wr':'bd')}">${esc(v.estado_pago||'—')}</span></td>
       <td class="r"><button class="btn gh sm" data-vdel="${v.id}">✕</button></td></tr>`).join('')}
-    </tbody></table>
+    </tbody>
+    <tfoot><tr style="border-top:2px solid var(--line);font-weight:700;background:var(--steel-l)">
+      <td class="nm" colspan="4" style="padding:11px 10px">TOTAL${(FIL.ventas.desde||FIL.ventas.hasta||FIL.ventas.q||f.estado)?' (filtrado)':''} · ${list.length} ventas</td>
+      <td class="r num" style="padding:11px 10px">${fmt(sum(list,'valor_venta'))}</td>
+      <td class="r num" style="padding:11px 10px;color:var(--ok)">${fmt(sum(list,'utilidad'))}</td>
+      <td colspan="2"></td></tr></tfoot></table>
     ${list.length>300?`<p class="note">Mostrando 300 de ${list.length}. Usa el buscador para filtrar.</p>`:''}`
     :`<div class="empty"><div class="ic">💼</div>No hay ventas que coincidan.</div>`}
   </div></div>`;
@@ -1374,7 +1388,7 @@ function modalEditVenta(id){
   ['e_val','e_int','e_cos'].forEach(x=>$('#'+x).addEventListener('input', calc));
   $('#e_cli').addEventListener('change', ()=>fillCliente($('#e_cli').value,'e_'));
   const diasPorForma=fp=>({credito_30:30,credito_60:60,credito_90:90,credito_120:120,credito_150:150,credito_180:180})[fp]||30;
-  const setVenc=()=>{ const el=$('#e_venc'); if(el && !el.value){ const base=new Date($('#e_fec').value||iso(hoy()));
+  const setVenc=()=>{ const el=$('#e_venc'); if(el && !el.value){ const base=parseD($('#e_fec').value)||hoyD();
     base.setDate(base.getDate()+diasPorForma($('#e_fp').value)); el.value=iso(base); } };
   const toggleVenc=()=>{ const w=$('#e_vencWrap'); if(!w) return;
     const on=$('#e_car')&&$('#e_car').checked; w.classList.toggle('hide', !on); if(on) setVenc(); };
@@ -1417,12 +1431,12 @@ async function saveVentaEdit(v){
       descripcion:g('e_desc'), cantidad:Math.round(num($('#e_und').value)),
       valor_venta:val, intereses:i, valor_costo:c, utilidad:u, parte_santi:sa, parte_luis:lu,
       forma_pago:$('#e_fp').value, estado_pago:$('#e_ep').value, proveedor:g('e_prov') };
-    if(v){ const r=await pbUpdate('ventas', v.id, body); Object.assign(v, r); v._d=new Date(v.fecha); toast('Venta actualizada'); }
+    if(v){ const r=await pbUpdate('ventas', v.id, body); Object.assign(v, r); v._d=parseD(v.fecha); toast('Venta actualizada'); }
     else {
-      const r=await pbCreate('ventas', body); r._d=new Date(r.fecha); DATA.ventas.push(r);
+      const r=await pbCreate('ventas', body); r._d=parseD(r.fecha); DATA.ventas.push(r);
       if($('#e_car') && $('#e_car').checked){
         let vencISO=g('e_venc');
-        if(!vencISO){ const venc=new Date(g('e_fec')||iso(hoy())); venc.setDate(venc.getDate()+30); vencISO=iso(venc); }
+        if(!vencISO){ const venc=parseD(g('e_fec'))||hoyD(); venc.setDate(venc.getDate()+30); vencISO=iso(venc); }
         const vencida = new Date(vencISO) < hoy();
         await pbCreate('cartera', {cliente:cl.id, cliente_nombre:nombre, venta:r.id, factura:g('e_fac'),
           fecha_venta:pbDate(g('e_fec')), fecha_vence:pbDate(vencISO), valor_total:val+i, abonado:0,
@@ -1521,17 +1535,17 @@ function modalCliente(id){
 function renderCartera(){
   const f=FIL.cartera, q=norm(f.q);
   const estOf=c=>{ if(c.saldo<=0) return 'pagada';
-    if(c.fecha_vence && new Date(c.fecha_vence)<hoy()) return 'vencida';
+    if(c.fecha_vence && parseD(c.fecha_vence)<hoyD()) return 'vencida';
     return c.abonado>0 ? 'parcial' : 'al_dia'; };
   const list=[...DATA.cartera]
     .filter(c=>!q || norm((c.cliente_nombre||'')+' '+(c.notas||'')+' '+(c.factura||'')).includes(q))
     .filter(c=>!f.estado || estOf(c)===f.estado)
-    .sort((a,b)=>new Date(a.fecha_vence||0)-new Date(b.fecha_vence||0));
+    .sort((a,b)=>(parseD(a.fecha_vence)||0)-(parseD(b.fecha_vence)||0));
   const saldo=sum(list,'saldo'), abon=sum(list,'abonado'), tot=sum(list,'valor_total');
-  const venc=list.filter(c=>c.saldo>0 && c.fecha_vence && new Date(c.fecha_vence)<hoy());
+  const venc=list.filter(c=>c.saldo>0 && c.fecha_vence && parseD(c.fecha_vence)<hoyD());
   const est=c=>{ if(c.saldo<=0) return ['ok','Pagada'];
-    if(c.fecha_vence && new Date(c.fecha_vence)<hoy()) return ['bd','Vencida'];
-    const d=c.fecha_vence?Math.ceil((new Date(c.fecha_vence)-hoy())/864e5):null;
+    if(c.fecha_vence && parseD(c.fecha_vence)<hoyD()) return ['bd','Vencida'];
+    const d=c.fecha_vence?Math.ceil((parseD(c.fecha_vence)-hoyD())/864e5):null;
     if(d!==null && d<=8) return ['wr','Vence en '+d+'d'];
     return ['nt', c.abonado>0?'Abono parcial':'Al día']; };
   $('#view').innerHTML = `
@@ -1553,7 +1567,7 @@ function renderCartera(){
       <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;color:var(--muted)">${esc(c.notas||'')}</td>
       <td class="r num">${fmt(c.valor_total)}</td><td class="r num">${fmt(c.abonado)}</td>
       <td class="r num" style="font-weight:600">${fmt(c.saldo)}</td>
-      <td class="num">${c.fecha_vence?new Date(c.fecha_vence).toLocaleDateString('es-CO',{day:'2-digit',month:'short',year:'2-digit'}):'—'}</td>
+      <td class="num">${c.fecha_vence?parseD(c.fecha_vence).toLocaleDateString('es-CO',{day:'2-digit',month:'short',year:'2-digit'}):'—'}</td>
       <td><span class="pill ${cl}">${tx}</span></td>
       <td class="r" style="white-space:nowrap"><button class="btn acc sm" data-abono="${c.id}">Abonar</button>
         <button class="btn wa sm" data-recordar="${c.id}" title="Recordar por WhatsApp" style="margin-left:5px">📲</button>
@@ -1565,8 +1579,8 @@ function recordarCartera(id){
   const c=DATA.cartera.find(x=>x.id===id); if(!c) return;
   const cl=DATA.clientes.find(x=>x.id===c.cliente || norm(x.nombre)===norm(c.cliente_nombre||''));
   let tel=(cl&&cl.telefono||'').replace(/[^0-9]/g,'');
-  const vencida = c.fecha_vence && new Date(c.fecha_vence)<hoy();
-  const fv = c.fecha_vence ? new Date(c.fecha_vence).toLocaleDateString('es-CO',{day:'2-digit',month:'long',year:'numeric'}) : '';
+  const vencida = c.fecha_vence && parseD(c.fecha_vence)<hoyD();
+  const fv = c.fecha_vence ? parseD(c.fecha_vence).toLocaleDateString('es-CO',{day:'2-digit',month:'long',year:'numeric'}) : '';
   const saludo = (cl&&cl.nombre||c.cliente_nombre||'').split(' ')[0] || 'Buen día';
   const msg = `Hola ${saludo}, te saluda Llantas Camión Medellín.\n\n`+
     (vencida
@@ -1611,12 +1625,12 @@ function modalAbono(id){
     const nuevoAb=(+c.abonado||0)+v, nuevoSaldo=Math.max(0,(+c.valor_total||0)-nuevoAb);
     try{
       const r=await pbUpdate('cartera', c.id, {abonado:nuevoAb, saldo:nuevoSaldo,
-        estado: nuevoSaldo<=0 ? 'pagada' : (c.fecha_vence && new Date(c.fecha_vence)<hoy() ? 'vencida':'al_dia')});
+        estado: nuevoSaldo<=0 ? 'pagada' : (c.fecha_vence && parseD(c.fecha_vence)<hoyD() ? 'vencida':'al_dia')});
       Object.assign(c, r);
       if($('#ab_ing').checked){
         const ing=await pbCreate('ingresos', {fecha:pbDate($('#ab_fec').value), concepto:'Abono '+(c.cliente_nombre||''),
           valor:v, medio:$('#ab_med').value, referencia:$('#ab_ref').value.trim()});
-        ing._d=new Date(ing.fecha); DATA.ingresos.push(ing);
+        ing._d=parseD(ing.fecha); DATA.ingresos.push(ing);
       }
       closeModal(); toast('Abono registrado'); render();
     }catch(e){ toast('Error: '+e.message, true); }
@@ -1715,7 +1729,10 @@ function renderMovs(){
       <td>${esE?`<span class="pill nt">${CAT_EGR[e.categoria]||e.categoria||'—'}</span>`:esc(MEDIOS[e.medio]||e.medio||'—')}</td>
       <td class="r num" style="font-weight:600">${fmt(e.valor)}</td>
       <td class="r"><button class="btn gh sm" data-mdel="${e.id}">✕</button></td></tr>`).join('')}
-    </tbody></table>
+    </tbody>
+    <tfoot><tr style="border-top:2px solid var(--line);font-weight:700;background:var(--steel-l)">
+      <td class="nm" colspan="3" style="padding:11px 10px">TOTAL${(FIL.movs.desde||FIL.movs.hasta||FIL.movs.q||(esE&&FIL.movs.cat))?' (filtrado)':''} · ${list.length} ${esE?'egresos':'ingresos'}</td>
+      <td class="r num" style="padding:11px 10px;font-size:15px;color:${esE?'var(--bad)':'var(--ok)'}">${fmt(tot)}</td><td></td></tr></tfoot></table>
     ${list.length>300?`<p class="note">Mostrando 300 de ${list.length}.</p>`:''}`
     :`<div class="empty"><div class="ic">${esE?'💸':'💰'}</div>No hay ${esE?'egresos':'ingresos'} registrados.</div>`}
   </div></div>`;
@@ -1763,8 +1780,8 @@ function modalMov(id){
          medio:$('#w_med').value, referencia:$('#w_ref').value.trim()};
     const col = esE?'egresos':'ingresos';
     try{
-      if(m){ const r=await pbUpdate(col, m.id, body); Object.assign(m, r); m._d=new Date(m.fecha); toast('Cambios guardados'); }
-      else { const r=await pbCreate(col, body); r._d=new Date(r.fecha); DATA[col].push(r); toast('Guardado'); }
+      if(m){ const r=await pbUpdate(col, m.id, body); Object.assign(m, r); m._d=parseD(m.fecha); toast('Cambios guardados'); }
+      else { const r=await pbCreate(col, body); r._d=parseD(r.fecha); DATA[col].push(r); toast('Guardado'); }
       closeModal(); render();
     }catch(x){ toast('Error: '+x.message, true); }
   });
@@ -1797,11 +1814,11 @@ function modalMovOld(){
         const r=await pbCreate('egresos', {fecha:pbDate($('#w_fec').value), categoria:$('#w_cat').value,
           descripcion:con, proveedor:$('#w_prov').value.trim(), valor:val,
           medio_pago:$('#w_med').value, soporte:$('#w_sop').value.trim(), notas:''});
-        r._d=new Date(r.fecha); DATA.egresos.push(r);
+        r._d=parseD(r.fecha); DATA.egresos.push(r);
       } else {
         const r=await pbCreate('ingresos', {fecha:pbDate($('#w_fec').value), concepto:con, valor:val,
           medio:$('#w_med').value, referencia:$('#w_ref').value.trim()});
-        r._d=new Date(r.fecha); DATA.ingresos.push(r);
+        r._d=parseD(r.fecha); DATA.ingresos.push(r);
       }
       closeModal(); toast('Guardado'); render();
     }catch(e){ toast('Error: '+e.message, true); }
@@ -1809,6 +1826,309 @@ function modalMovOld(){
 }
 
 /* ================= AJUSTES ================= */
+function renderCotizaciones(){
+  const f=FIL.cotizaciones||(FIL.cotizaciones={q:'',desde:'',hasta:''}); const q=norm(f.q);
+  const list=[...(DATA.cotizaciones||[])]
+    .filter(c=>!q || norm((c.cliente_nombre||'')+' '+(c.numero||'')).includes(q))
+    .map(c=>({...c, _d:parseD(c.fecha)}))
+    .filter(c=>enRango(c._d,'cotizaciones'))
+    .sort((a,b)=>(b._d||0)-(a._d||0));
+  const tot=sum(list,'total');
+  $('#view').innerHTML=`
+  <div class="hd"><h1>Cotizaciones guardadas</h1><div class="sp"></div>
+    <button class="btn acc sm" id="btnNewCot">＋ Nueva (ir al cotizador)</button></div>
+  <div class="kpis" style="margin-bottom:14px">
+    <div class="kpi b"><div class="l">Cotizaciones</div><div class="v">${list.length}</div><div class="d">valor total ${fmt(tot)}</div></div>
+    <div class="kpi c"><div class="l">Este mes</div><div class="v">${(DATA.cotizaciones||[]).filter(c=>{const d=parseD(c.fecha);return d&&d.getMonth()===hoy().getMonth()&&d.getFullYear()===hoy().getFullYear();}).length}</div><div class="d">${MES[hoy().getMonth()]} ${hoy().getFullYear()}</div></div>
+  </div>
+  <div class="card"><div class="cb">${filBar('cotizaciones', filDate('cotizaciones'))}</div>
+  <div class="cb tbl-wrap" style="padding-top:0">${list.length?`
+    <table><thead><tr><th>Fecha</th><th>N°</th><th>Cliente</th><th>Modo</th><th class="r">Total</th><th></th></tr></thead><tbody>
+    ${list.slice(0,300).map(c=>`<tr class="clk" data-cot="${c.id}">
+      <td class="num">${c._d?c._d.toLocaleDateString('es-CO',{day:'2-digit',month:'short',year:'2-digit'}):'—'}</td>
+      <td class="num">${esc(c.numero||'—')}</td>
+      <td class="nm">${esc(c.cliente_nombre||'—')}</td>
+      <td><span class="pill nt">${esc(c.modo||'—')}</span></td>
+      <td class="r num" style="font-weight:600">${fmt(c.total)}</td>
+      <td class="r"><button class="btn gh sm" data-cotdel="${c.id}">✕</button></td></tr>`).join('')}
+    </tbody>
+    <tfoot><tr style="border-top:2px solid var(--line);font-weight:700;background:var(--steel-l)">
+      <td class="nm" colspan="4" style="padding:11px 10px">TOTAL${(f.desde||f.hasta||f.q)?' (filtrado)':''} · ${list.length}</td>
+      <td class="r num" style="padding:11px 10px">${fmt(tot)}</td><td></td></tr></tfoot></table>`
+    :`<div class="empty"><div class="ic">📄</div>No hay cotizaciones guardadas.<br>Cuando armes una en el cotizador y le des <b>Guardar cotización</b>, aparecerá aquí.</div>`}
+  </div></div>`;
+  $('#btnNewCot').addEventListener('click', ()=>{ TAB='cotizar'; render(); });
+  $$('[data-cot]').forEach(r=>r.addEventListener('click', e=>{
+    if(e.target.closest('[data-cotdel]')) return;
+    verCotizacion(r.dataset.cot); }));
+  $$('[data-cotdel]').forEach(b=>b.addEventListener('click', async e=>{
+    e.stopPropagation();
+    if(!confirm('¿Eliminar esta cotización guardada?')) return;
+    try{ await pbDelete('cotizaciones', b.dataset.cotdel);
+      DATA.cotizaciones=DATA.cotizaciones.filter(x=>x.id!==b.dataset.cotdel);
+      toast('Cotización eliminada'); render(); }catch(x){ toast('Error: '+x.message, true); } }));
+}
+function verCotizacion(id){
+  const c=(DATA.cotizaciones||[]).find(x=>x.id===id); if(!c) return;
+  let items=[]; try{ items=JSON.parse(c.items||'[]'); }catch(e){}
+  const d=parseD(c.fecha);
+  openModal('Cotización '+(c.numero||''), `
+    <div style="font-size:13.5px;line-height:1.9;margin-bottom:12px">
+      <b>Cliente:</b> ${esc(c.cliente_nombre||'—')}<br>
+      <b>Fecha:</b> ${d?d.toLocaleDateString('es-CO'):'—'} · <b>Modo:</b> ${esc(c.modo||'—')}<br>
+      <b>Plazo:</b> ${c.plazo_dias?c.plazo_dias+' días':'contado'} · <b>Medio:</b> ${esc(c.medio_pago||'—')}${c.validez?` · <b>Validez:</b> ${esc(c.validez)}`:''}
+    </div>
+    <div class="tbl-wrap"><table><thead><tr><th>Producto</th><th class="r">Cant</th><th class="r">Unit</th><th class="r">Subtotal</th></tr></thead><tbody>
+      ${items.map(it=>`<tr><td class="nm">${esc(it.d||'')}${it.m?` <span class="pill nt">${esc(it.m)}</span>`:''}</td>
+        <td class="r num">${it.q||0}</td><td class="r num">${fmt(it.pu||0)}</td><td class="r num">${fmt((it.pu||0)*(it.q||0))}</td></tr>`).join('')}
+    </tbody><tfoot><tr style="font-weight:700;background:var(--steel-l)"><td colspan="3" style="padding:9px">TOTAL</td>
+      <td class="r num" style="padding:9px;font-size:15px">${fmt(c.total)}</td></tr></tfoot></table></div>`,
+    `<button class="btn dg" id="cotDel">Eliminar</button>
+     <button class="btn gh" id="cotClose">Cerrar</button>
+     <button class="btn acc" id="cotVenta">Registrar como venta</button>`);
+  $('#cotClose').addEventListener('click', closeModal);
+  $('#cotDel').addEventListener('click', async ()=>{
+    if(!confirm('¿Eliminar esta cotización?')) return;
+    try{ await pbDelete('cotizaciones', c.id); DATA.cotizaciones=DATA.cotizaciones.filter(x=>x.id!==c.id);
+      closeModal(); toast('Eliminada'); render(); }catch(x){ toast('Error: '+x.message, true); } });
+  $('#cotVenta').addEventListener('click', ()=>{ closeModal();
+    // precargar el carrito con los ítems de la cotización y abrir el registro de venta
+    cart = items.map(it=>({ id:'cot_'+Math.random().toString(36).slice(2), qty:it.q||1,
+      _cot:{descripcion:it.d, marca:it.m, costo:it.costo||0, venta:it.pu||0}, precio:it.pu||0 }));
+    if($('#c_cli')) $('#c_cli').value=c.cliente_nombre||'';
+    toast('Revisa y registra la venta'); modalVentaDesdeCotizacion(c, items); });
+}
+function modalVentaDesdeCotizacion(c, items){
+  // usa el mismo formulario de venta editable, precargado
+  modalEditVenta(null);
+  setTimeout(()=>{
+    if($('#e_cli')) { $('#e_cli').value=c.cliente_nombre||''; fillCliente(c.cliente_nombre||'','e_'); }
+    const desc = items.length===1 ? items[0].d : items.length+' referencias';
+    const und = items.reduce((s,it)=>s+(+it.q||0),0);
+    const val = c.total||0;
+    const cos = items.reduce((s,it)=>s+((+it.costo||0)*(+it.q||0)),0);
+    if($('#e_desc')) $('#e_desc').value=desc;
+    if($('#e_und')) $('#e_und').value=und;
+    if($('#e_val')) $('#e_val').value=val;
+    if($('#e_cos')) $('#e_cos').value=cos;
+    if($('#e_val')) $('#e_val').dispatchEvent(new Event('input'));
+  }, 60);
+}
+/* ================= LICITACIONES ================= */
+const LIC_EST = {adjudicada:'Adjudicada', ejecucion:'En ejecución', liquidada:'Liquidada'};
+const DOC_TIPOS = {contrato:'Contrato', acta_inicio:'Acta de inicio', acta_entrega:'Acta de entrega',
+  acta_liquidacion:'Acta de liquidación', poliza:'Póliza', factura:'Factura', otro:'Otro'};
+function licUtil(l){ // utilidad neta = desembolsado(o contrato) - costo mercancía - otros costos
+  const base = (+l.valor_desembolsado||+l.valor_contrato||0);
+  return base - (+l.costo_mercancia||0) - (+l.otros_costos||0);
+}
+function renderLicitaciones(){
+  const f=FIL.licitaciones||(FIL.licitaciones={q:'',desde:'',hasta:''}); const q=norm(f.q);
+  const list=[...(DATA.licitaciones||[])]
+    .filter(l=>!q || norm((l.numero||'')+' '+(l.objeto||'')+' '+(l.entidad||'')).includes(q))
+    .map(l=>({...l, _d:parseD(l.fecha_adjudica)}))
+    .filter(l=>enRango(l._d,'licitaciones'))
+    .sort((a,b)=>(b._d||0)-(a._d||0));
+  const totContrato=sum(list,'valor_contrato');
+  const totDesemb=list.reduce((s,l)=>s+(+l.valor_desembolsado||0),0);
+  const totUtil=list.reduce((s,l)=>s+licUtil(l),0);
+  $('#view').innerHTML=`
+  <div class="hd"><h1>Licitaciones</h1><div class="sp"></div>
+    <button class="btn acc sm" id="btnNewLic">＋ Nueva licitación</button></div>
+  <div class="kpis" style="margin-bottom:14px">
+    <div class="kpi b"><div class="l">Licitaciones</div><div class="v">${list.length}</div><div class="d">valor contratos ${fmt(totContrato)}</div></div>
+    <div class="kpi c"><div class="l">Desembolsado</div><div class="v" style="font-size:22px">${fmt(totDesemb)}</div><div class="d">giros reales de entidades</div></div>
+    <div class="kpi a"><div class="l">Utilidad neta</div><div class="v" style="font-size:22px;color:var(--ok)">${fmt(totUtil)}</div><div class="d">margen ${totDesemb?pct(totUtil/totDesemb):'—'}</div></div>
+  </div>
+  <div class="card"><div class="cb">${filBar('licitaciones', filDate('licitaciones'))}</div>
+  <div class="cb tbl-wrap" style="padding-top:0">${list.length?`
+    <table><thead><tr><th>Adjudicó</th><th>N° / Objeto</th><th>Entidad</th><th>Estado</th><th class="r">Contrato</th><th class="r">Desemb.</th><th class="r">Utilidad</th></tr></thead><tbody>
+    ${list.map(l=>`<tr class="clk" data-lic="${l.id}">
+      <td class="num">${l._d?l._d.toLocaleDateString('es-CO',{day:'2-digit',month:'short',year:'2-digit'}):'—'}</td>
+      <td class="nm"><b>${esc(l.numero||'—')}</b><br><span style="font-size:11.5px;color:var(--muted)">${esc((l.objeto||'').slice(0,50))}${(l.objeto||'').length>50?'…':''}</span></td>
+      <td>${esc((l.entidad||'—').slice(0,28))}</td>
+      <td><span class="pill ${l.estado==='liquidada'?'ok':(l.estado==='ejecucion'?'wr':'nt')}">${LIC_EST[l.estado]||l.estado||'—'}</span></td>
+      <td class="r num">${fmt(l.valor_contrato)}</td>
+      <td class="r num">${l.valor_desembolsado?fmt(l.valor_desembolsado):'<span style=\"color:var(--muted)\">pendiente</span>'}</td>
+      <td class="r num" style="color:var(--ok);font-weight:600">${fmt(licUtil(l))}</td></tr>`).join('')}
+    </tbody>
+    <tfoot><tr style="border-top:2px solid var(--line);font-weight:700;background:var(--steel-l)">
+      <td class="nm" colspan="4" style="padding:11px 10px">TOTAL${(f.desde||f.hasta||f.q)?' (filtrado)':''} · ${list.length}</td>
+      <td class="r num" style="padding:11px 10px">${fmt(totContrato)}</td>
+      <td class="r num" style="padding:11px 10px">${fmt(totDesemb)}</td>
+      <td class="r num" style="padding:11px 10px;color:var(--ok)">${fmt(totUtil)}</td></tr></tfoot></table>`
+    :`<div class="empty"><div class="ic">🏛️</div>No hay licitaciones registradas.<br>Crea una para llevar el control de costos, retenciones y utilidad real.</div>`}
+  </div></div>`;
+  $('#btnNewLic').addEventListener('click', ()=>modalLic(null));
+  $$('[data-lic]').forEach(r=>r.addEventListener('click', ()=>verLic(r.dataset.lic)));
+}
+function modalLic(l){
+  const g=(k,d)=>esc(l&&l[k]!=null&&l[k]!==''?l[k]:(d||''));
+  const n=v=>l&&l[v]!=null?(+l[v]||''):'';
+  openModal(l?'Editar licitación':'Nueva licitación', `
+    <div class="fgrid">
+      <div class="fld"><label>N° de proceso</label><input id="l_num" value="${g('numero')}" placeholder="Ej: SECOP II ..."></div>
+      <div class="fld"><label>Estado</label><select id="l_est">
+        ${Object.entries(LIC_EST).map(([k,v])=>`<option value="${k}" ${l&&l.estado===k?'selected':''}>${v}</option>`).join('')}</select></div>
+      <div class="fld full"><label>Objeto del contrato</label><input id="l_obj" value="${g('objeto')}" placeholder="Suministro de llantas para..."></div>
+      <div class="fld"><label>Entidad contratante</label><input id="l_ent" value="${g('entidad')}"></div>
+      <div class="fld"><label>NIT entidad</label><input id="l_nit" value="${g('nit_entidad')}"></div>
+      <div class="fld"><label>Fecha de adjudicación</label><input id="l_fadj" type="date" value="${l&&l.fecha_adjudica?iso(l.fecha_adjudica):iso(hoy())}"></div>
+      <div class="fld"><label>Fecha de desembolso</label><input id="l_fdes" type="date" value="${l&&l.fecha_desembolso?iso(l.fecha_desembolso):''}"></div>
+    </div>
+    <div style="border-top:1px solid var(--line);margin:14px 0 4px;padding-top:12px;font-weight:700;font-size:13px;color:var(--navy)">💰 Valores del negocio</div>
+    <div class="fgrid">
+      <div class="fld"><label>Valor del contrato *</label><input id="l_val" type="number" value="${n('valor_contrato')}" placeholder="29000000"></div>
+      <div class="fld"><label>Valor desembolsado</label><input id="l_des" type="number" value="${n('valor_desembolsado')}" placeholder="lo que giró la entidad"></div>
+      <div class="fld"><label>Costo mercancía (llantas)</label><input id="l_cos" type="number" value="${n('costo_mercancia')}"></div>
+      <div class="fld"><label>Otros costos</label><input id="l_otro" type="number" value="${n('otros_costos')}" placeholder="transporte, pólizas..."></div>
+    </div>
+    <div id="l_calc" style="background:var(--steel-l);border-radius:10px;padding:11px 13px;font-size:12.5px;color:var(--navy);line-height:1.8;margin-top:6px"></div>
+    <div class="fld full" style="margin-top:11px"><label>Notas</label><input id="l_notas" value="${g('notas')}"></div>
+    <p class="note">💡 La <b>utilidad neta</b> se calcula sobre el valor desembolsado (si lo tienes) o el del contrato, menos costo de mercancía y otros costos. Los documentos y el desglose fino se agregan al abrir la licitación.</p>`,
+    `${l?`<button class="btn dg" id="lDel">Eliminar</button>`:''}
+     <button class="btn gh" id="lCancel">Cancelar</button>
+     <button class="btn acc" id="lSave">${l?'Guardar':'Crear'}</button>`, true);
+  const calc=()=>{ const val=num($('#l_val').value), des=num($('#l_des').value),
+      cos=num($('#l_cos').value), otro=num($('#l_otro').value);
+    const base=des||val; const u=base-cos-otro;
+    $('#l_calc').innerHTML=`Base de cálculo: <b>${fmt(base)}</b> ${des?'(desembolsado)':'(contrato)'}<br>
+      − Costo mercancía ${fmt(cos)} − Otros costos ${fmt(otro)}<br>
+      <b style="color:var(--ok)">Utilidad neta: ${fmt(u)}</b> · margen ${base?pct(u/base):'—'}`; };
+  ['l_val','l_des','l_cos','l_otro'].forEach(x=>$('#'+x).addEventListener('input', calc)); calc();
+  $('#lCancel').addEventListener('click', closeModal);
+  if(l) $('#lDel').addEventListener('click', async ()=>{
+    if(!confirm('¿Eliminar esta licitación? (no borra la venta ni movimientos ya registrados)')) return;
+    try{ await pbDelete('licitaciones', l.id); DATA.licitaciones=DATA.licitaciones.filter(x=>x.id!==l.id);
+      closeModal(); toast('Licitación eliminada'); render(); }catch(x){ toast('Error: '+x.message, true); } });
+  $('#lSave').addEventListener('click', async ()=>{
+    const val=num($('#l_val').value);
+    if(!val){ toast('Pon el valor del contrato', true); return; }
+    const des=num($('#l_des').value), cos=num($('#l_cos').value), otro=num($('#l_otro').value);
+    const body={ numero:($('#l_num').value||'').trim(), objeto:($('#l_obj').value||'').trim(),
+      entidad:($('#l_ent').value||'').trim(), nit_entidad:($('#l_nit').value||'').trim(),
+      estado:$('#l_est').value, valor_contrato:val, valor_desembolsado:des,
+      costo_mercancia:cos, otros_costos:otro, utilidad_neta:(des||val)-cos-otro,
+      fecha_adjudica:pbDate($('#l_fadj').value), fecha_desembolso:pbDate($('#l_fdes').value),
+      notas:($('#l_notas').value||'').trim(), fecha:pbDate($('#l_fadj').value) };
+    try{
+      if(l){ const r=await pbUpdate('licitaciones', l.id, body); Object.assign(l, r); toast('Licitación actualizada'); }
+      else { const r=await pbCreate('licitaciones', body); DATA.licitaciones.push(r); toast('Licitación creada'); }
+      closeModal(); render();
+    }catch(x){ toast('Error: '+x.message, true); }
+  });
+}
+async function verLic(id){
+  const l=(DATA.licitaciones||[]).find(x=>x.id===id); if(!l) return;
+  let docs=[];
+  try{ docs=await pbAll('lic_docs', `&filter=(licitacion='${id}')`); }catch(e){}
+  const u=licUtil(l); const base=(+l.valor_desembolsado||+l.valor_contrato||0);
+  const yaVenta = !!l.venta_id && DATA.ventas.some(v=>v.id===l.venta_id);
+  openModal('Licitación '+(l.numero||''), `
+    <div style="font-size:13.5px;line-height:1.9;margin-bottom:10px">
+      <b>Objeto:</b> ${esc(l.objeto||'—')}<br>
+      <b>Entidad:</b> ${esc(l.entidad||'—')}${l.nit_entidad?' · NIT '+esc(l.nit_entidad):''}<br>
+      <b>Estado:</b> ${LIC_EST[l.estado]||l.estado||'—'}
+      ${l.fecha_adjudica?` · Adjudicó ${parseD(l.fecha_adjudica).toLocaleDateString('es-CO')}`:''}
+      ${l.fecha_desembolso?` · Desembolsó ${parseD(l.fecha_desembolso).toLocaleDateString('es-CO')}`:''}
+    </div>
+    <div style="background:var(--steel-l);border-radius:10px;padding:13px 15px;font-size:13px;line-height:1.9">
+      Valor contrato: <b>${fmt(l.valor_contrato)}</b><br>
+      ${l.valor_desembolsado?`Desembolsado: <b>${fmt(l.valor_desembolsado)}</b> <span style="color:var(--muted)">(dif ${fmt(l.valor_contrato-l.valor_desembolsado)} en retenciones/deducciones)</span><br>`:'<span style="color:var(--orange-d)">Aún sin registrar desembolso real</span><br>'}
+      − Costo mercancía: ${fmt(l.costo_mercancia)}<br>
+      − Otros costos: ${fmt(l.otros_costos)}<br>
+      <b style="color:var(--ok);font-size:15px">Utilidad neta: ${fmt(u)}</b> · margen ${base?pct(u/base):'—'}
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin:16px 0 8px">
+      <b style="font-size:13px;color:var(--navy)">📎 Documentos (${docs.length})</b>
+      <button class="btn acc sm" id="lDocAdd">＋ Agregar documento</button>
+    </div>
+    <div id="lDocList">${docs.length?docs.map(dc=>`<div style="display:flex;align-items:center;gap:9px;padding:8px 0;border-bottom:1px solid #eef2f7">
+      <span class="pill nt">${DOC_TIPOS[dc.tipo]||dc.tipo||'doc'}</span>
+      <span style="flex:1;font-size:13px">${esc(dc.nombre||'documento')}</span>
+      ${dc.enlace?`<a class="btn gh sm" href="${esc(dc.enlace)}" target="_blank">Abrir</a>`:''}
+      <button class="btn gh sm" data-docdel="${dc.id}">✕</button></div>`).join(''):'<p class="note">Sin documentos aún. Agrega enlaces a contratos, actas de inicio, entrega o liquidación.</p>'}</div>`,
+    `<button class="btn dg" id="lEdit2">Editar datos</button>
+     <button class="btn gh" id="lClose">Cerrar</button>
+     ${yaVenta?'<button class="btn gh" id="lVentaVer" style="opacity:.7">✓ Venta registrada</button>':'<button class="btn acc" id="lVenta">Registrar como venta</button>'}`, true);
+  $('#lClose').addEventListener('click', closeModal);
+  $('#lEdit2').addEventListener('click', ()=>{ closeModal(); modalLic(l); });
+  $('#lDocAdd').addEventListener('click', ()=>modalLicDoc(l));
+  if($('#lVenta')) $('#lVenta').addEventListener('click', ()=>confirmarVentaLic(l));
+  if($('#lVentaVer')) $('#lVentaVer').addEventListener('click', ()=>toast('Esta licitación ya tiene una venta asociada'));
+  $$('[data-docdel]').forEach(b=>b.addEventListener('click', async ()=>{
+    if(!confirm('¿Eliminar este documento?')) return;
+    try{ await pbDelete('lic_docs', b.dataset.docdel); toast('Documento eliminado'); verLic(id); }
+    catch(x){ toast('Error: '+x.message, true); } }));
+}
+function modalLicDoc(l){
+  openModal('Agregar documento', `
+    <div class="fld"><label>Tipo de documento</label><select id="d_tipo">
+      ${Object.entries(DOC_TIPOS).map(([k,v])=>`<option value="${k}">${v}</option>`).join('')}</select></div>
+    <div class="fld"><label>Nombre / descripción</label><input id="d_nom" placeholder="Ej: Contrato firmado 2026"></div>
+    <div class="fld"><label>Enlace (Google Drive, carpeta de la entidad, etc.)</label><input id="d_link" placeholder="https://drive.google.com/..."></div>
+    <p class="note">💡 Guarda aquí el enlace a la carpeta o archivo de la entidad. Los documentos físicos los sigues manejando en tus carpetas del computador; esto es solo el índice con acceso rápido.</p>`,
+    `<button class="btn gh" id="dCancel">Cancelar</button>
+     <button class="btn acc" id="dSave">Guardar</button>`);
+  $('#dCancel').addEventListener('click', ()=>verLic(l.id));
+  $('#dSave').addEventListener('click', async ()=>{
+    const enlace=($('#d_link').value||'').trim(), nom=($('#d_nom').value||'').trim();
+    if(!enlace && !nom){ toast('Pon un nombre o un enlace', true); return; }
+    try{
+      await pbCreate('lic_docs', {licitacion:l.id, tipo:$('#d_tipo').value,
+        nombre:nom||'Documento', enlace:enlace});
+      toast('Documento agregado'); verLic(l.id);
+    }catch(x){ toast('Error: '+x.message, true); }
+  });
+}
+function confirmarVentaLic(l){
+  const u=licUtil(l); const base=(+l.valor_desembolsado||+l.valor_contrato||0);
+  openModal('¿Registrar como venta?', `
+    <p style="font-size:13.5px;line-height:1.7;margin-bottom:12px">Se creará una <b>venta</b> con estos datos, y se reflejará en Ventas, Clientes e Ingresos. Revisa antes de confirmar:</p>
+    <div style="background:var(--steel-l);border-radius:10px;padding:13px 15px;font-size:13px;line-height:1.9">
+      <b>Cliente:</b> ${esc(l.entidad||'Entidad')}<br>
+      <b>Concepto:</b> ${esc(l.objeto||('Licitación '+(l.numero||'')))}<br>
+      <b>Valor de la venta:</b> ${fmt(base)} ${l.valor_desembolsado?'(desembolsado real)':'(valor contrato)'}<br>
+      <b>Costo:</b> ${fmt((+l.costo_mercancia||0)+(+l.otros_costos||0))}<br>
+      <b>Utilidad:</b> <span style="color:var(--ok)">${fmt(u)}</span>
+    </div>
+    <label style="display:flex;align-items:center;gap:8px;margin-top:12px;font-size:13px">
+      <input type="checkbox" id="lv_ing" checked style="width:17px;height:17px;accent-color:var(--orange)"> Registrar también el ingreso (dinero recibido)</label>
+    ${!l.valor_desembolsado?'<p class="note" style="color:var(--orange-d)">⚠️ No has puesto el valor desembolsado. Se usará el valor del contrato. Si prefieres esperar al giro real de la entidad, cancela y edita la licitación primero.</p>':''}`,
+    `<button class="btn gh" id="lvCancel">Cancelar</button>
+     <button class="btn acc" id="lvGo">Sí, registrar venta</button>`);
+  $('#lvCancel').addEventListener('click', ()=>verLic(l.id));
+  $('#lvGo').addEventListener('click', async ()=>{
+    const btn=$('#lvGo'); btn.disabled=true; btn.textContent='Registrando…';
+    const base=(+l.valor_desembolsado||+l.valor_contrato||0);
+    const costo=(+l.costo_mercancia||0)+(+l.otros_costos||0);
+    const util=base-costo, sa=Math.round(util*SET.pctSanti), lu=util-sa;
+    try{
+      // cliente (entidad)
+      let cl=DATA.clientes.find(x=>norm(x.nombre)===norm(l.entidad||''));
+      if(!cl && l.entidad){ cl=await pbCreate('clientes', {nombre:l.entidad, nit:l.nit_entidad||'',
+        tipo:'entidad', segmento:'estatal'}); DATA.clientes.push(cl); }
+      // venta
+      const vbody={ fecha:pbDate(l.fecha_desembolso||l.fecha_adjudica||iso(hoy())),
+        factura:l.numero||'', cliente:cl?cl.id:'', cliente_nombre:l.entidad||'Entidad',
+        nit:l.nit_entidad||'', descripcion:l.objeto||('Licitación '+(l.numero||'')),
+        cantidad:1, valor_venta:base, intereses:0, valor_costo:costo, utilidad:util,
+        parte_santi:sa, parte_luis:lu, forma_pago:'licitacion', estado_pago:'pagada',
+        proveedor:'', notas:'Licitación '+(l.numero||'') };
+      const ven=await pbCreate('ventas', vbody); ven._d=parseD(ven.fecha); DATA.ventas.push(ven);
+      // ingreso opcional
+      if($('#lv_ing') && $('#lv_ing').checked){
+        const ing=await pbCreate('ingresos', {fecha:pbDate(l.fecha_desembolso||iso(hoy())),
+          concepto:'Pago '+(l.entidad||'entidad')+' · '+(l.numero||''), valor:base,
+          medio:'transferencia', referencia:l.numero||''});
+        ing._d=parseD(ing.fecha); DATA.ingresos.push(ing);
+      }
+      // enlazar venta a la licitación
+      await pbUpdate('licitaciones', l.id, {venta_id:ven.id}); l.venta_id=ven.id;
+      toast('Venta registrada desde la licitación'); closeModal(); render();
+    }catch(x){ toast('Error: '+x.message, true); btn.disabled=false; btn.textContent='Sí, registrar venta'; }
+  });
+}
 function renderVisitas(){
   $('#view').innerHTML = `<div class="hd"><h1>Visitas al cotizador</h1><div class="sp"></div>
     <button class="btn gh sm" id="btnRefV">🔄 Actualizar</button></div>
@@ -2194,7 +2514,8 @@ function render(){
   $('#who').textContent=USER;
   $$('#navIn button').forEach(b=>b.classList.toggle('on', b.dataset.t===TAB));
   ({cotizar:renderCotizar, tablero:renderTablero, ventas:renderVentas,
-    clientes:renderClientes, cartera:renderCartera, movs:renderMovs, visitas:renderVisitas, ajustes:renderAjustes}[TAB]||renderCotizar)();
+    clientes:renderClientes, cartera:renderCartera, movs:renderMovs, visitas:renderVisitas,
+    cotizaciones:renderCotizaciones, licitaciones:renderLicitaciones, ajustes:renderAjustes}[TAB]||renderCotizar)();
 }
 
 /* ================= EVENTOS GLOBALES ================= */
