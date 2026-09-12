@@ -2033,6 +2033,7 @@ async function verLic(id){
   try{ docs=await pbAll('lic_docs', `&filter=(licitacion='${id}')`); }catch(e){}
   const u=licUtil(l); const base=(+l.valor_desembolsado||+l.valor_contrato||0);
   const yaVenta = !!l.venta_id && DATA.ventas.some(v=>v.id===l.venta_id);
+  const car = l.cartera_id ? DATA.cartera.find(x=>x.id===l.cartera_id) : null;
   openModal('Licitación '+(l.numero||''), `
     <div style="font-size:13.5px;line-height:1.9;margin-bottom:10px">
       <b>Objeto:</b> ${esc(l.objeto||'—')}<br>
@@ -2049,6 +2050,7 @@ async function verLic(id){
       − Garantías/pólizas: ${fmt(l.garantias)}<br>
       − Otros costos: ${fmt(l.otros_costos)}<br>
       <b style="color:var(--ok);font-size:15px">Utilidad neta: ${fmt(u)}</b> · margen ${base?pct(u/base):'—'}
+      ${car?`<br>⏳ Cartera: ${car.estado==='pagada'?'<span style="color:var(--ok)">pagada</span>':`saldo ${fmt(car.saldo)}${car.fecha_vence?' · vence '+parseD(car.fecha_vence).toLocaleDateString('es-CO'):''}`}`:''}
     </div>
     <div style="display:flex;justify-content:space-between;align-items:center;margin:16px 0 8px">
       <b style="font-size:13px;color:var(--navy)">📎 Documentos (${docs.length})</b>
@@ -2105,6 +2107,8 @@ function confirmarVentaLic(l){
     </div>
     <label style="display:flex;align-items:center;gap:8px;margin-top:12px;font-size:13px">
       <input type="checkbox" id="lv_ing" ${l.valor_desembolsado?'checked':''} style="width:17px;height:17px;accent-color:var(--orange)"> Registrar también el ingreso (dinero recibido)</label>
+    <label style="display:flex;align-items:center;gap:8px;margin-top:8px;font-size:13px">
+      <input type="checkbox" id="lv_car" ${!l.valor_desembolsado?'checked':''} style="width:17px;height:17px;accent-color:var(--orange)"> Registrar también en cartera (pendiente por cobrar)</label>
     ${!l.valor_desembolsado?'<p class="note" style="color:var(--orange-d)">⚠️ Aún no tienes el valor desembolsado: se registra con el valor del contrato como provisional y queda pendiente de cobro en Cartera. Cuando llegue el giro real, edita la licitación y usa "Actualizar venta".</p>':''}`,
     `<button class="btn gh" id="lvCancel">Cancelar</button>
      <button class="btn acc" id="lvGo">Sí, registrar venta</button>`);
@@ -2137,7 +2141,18 @@ function confirmarVentaLic(l){
         ing._d=parseD(ing.fecha); DATA.ingresos.push(ing);
         upd.ingreso_id=ing.id;
       }
-      // enlazar venta (e ingreso) a la licitación, para poder actualizarlos después sin duplicar
+      // cartera opcional (pendiente por cobrar) — vence 45 días después de la adjudicación
+      if($('#lv_car') && $('#lv_car').checked){
+        const venc=parseD(l.fecha_adjudica)||hoy(); venc.setDate(venc.getDate()+45);
+        const car=await pbCreate('cartera', {cliente:cl?cl.id:'', cliente_nombre:l.entidad||'Entidad',
+          venta:ven.id, factura:l.numero||'', fecha_venta:pbDate(l.fecha_adjudica||iso(hoy())),
+          fecha_vence:pbDate(iso(venc)), valor_total:base, abonado:l.valor_desembolsado?base:0,
+          saldo:l.valor_desembolsado?0:base, estado:l.valor_desembolsado?'pagada':'al_dia',
+          notas:l.objeto||('Licitación '+(l.numero||''))});
+        DATA.cartera.push(car);
+        upd.cartera_id=car.id;
+      }
+      // enlazar venta (e ingreso y cartera) a la licitación, para poder actualizarlos después sin duplicar
       await pbUpdate('licitaciones', l.id, upd); Object.assign(l, upd);
       toast('Venta registrada desde la licitación'); closeModal(); render();
     }catch(x){ toast('Error: '+x.message, true); btn.disabled=false; btn.textContent='Sí, registrar venta'; }
@@ -2156,7 +2171,10 @@ function actualizarVentaLic(l){
       <b>Utilidad:</b> ${fmt(ven.utilidad)} → <b>${fmt(util)}</b>
     </div>
     <label style="display:flex;align-items:center;gap:8px;margin-top:12px;font-size:13px">
-      <input type="checkbox" id="lu_ing" ${l.valor_desembolsado?'checked':''} style="width:17px;height:17px;accent-color:var(--orange)"> Actualizar también el ingreso registrado</label>`,
+      <input type="checkbox" id="lu_ing" ${l.valor_desembolsado?'checked':''} style="width:17px;height:17px;accent-color:var(--orange)"> Actualizar también el ingreso registrado</label>
+    <label style="display:flex;align-items:center;gap:8px;margin-top:8px;font-size:13px">
+      <input type="checkbox" id="lu_car" ${(l.valor_desembolsado||l.cartera_id)?'checked':''} style="width:17px;height:17px;accent-color:var(--orange)"> ${l.cartera_id?'Actualizar también la cartera':'Registrar también en cartera'}</label>
+    ${l.valor_desembolsado&&l.cartera_id?'<p class="note">Como ya hay valor desembolsado, la cartera queda marcada como pagada.</p>':''}`,
     `<button class="btn gh" id="luCancel">Cancelar</button>
      <button class="btn acc" id="luGo">Sí, actualizar</button>`);
   $('#luCancel').addEventListener('click', ()=>verLic(l.id));
@@ -2177,6 +2195,25 @@ function actualizarVentaLic(l){
             medio:'transferencia', referencia:l.numero||''});
           ing._d=parseD(ing.fecha); DATA.ingresos.push(ing);
           await pbUpdate('licitaciones', l.id, {ingreso_id:ing.id}); l.ingreso_id=ing.id;
+        }
+      }
+      if($('#lu_car') && $('#lu_car').checked){
+        if(l.cartera_id){
+          const carBody = l.valor_desembolsado
+            ? {valor_total:base, abonado:base, saldo:0, estado:'pagada'}
+            : {valor_total:base, saldo:base, estado:'al_dia'};
+          const cr=await pbUpdate('cartera', l.cartera_id, carBody);
+          const car=DATA.cartera.find(x=>x.id===l.cartera_id);
+          if(car) Object.assign(car, cr);
+        } else {
+          const venc=parseD(l.fecha_adjudica)||hoy(); venc.setDate(venc.getDate()+45);
+          const car=await pbCreate('cartera', {cliente:ven.cliente||'', cliente_nombre:l.entidad||'Entidad',
+            venta:ven.id, factura:l.numero||'', fecha_venta:pbDate(l.fecha_adjudica||iso(hoy())),
+            fecha_vence:pbDate(iso(venc)), valor_total:base, abonado:l.valor_desembolsado?base:0,
+            saldo:l.valor_desembolsado?0:base, estado:l.valor_desembolsado?'pagada':'al_dia',
+            notas:l.objeto||('Licitación '+(l.numero||''))});
+          DATA.cartera.push(car);
+          await pbUpdate('licitaciones', l.id, {cartera_id:car.id}); l.cartera_id=car.id;
         }
       }
       toast('Venta actualizada'); closeModal(); render();
