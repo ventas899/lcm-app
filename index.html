@@ -2124,7 +2124,7 @@ function confirmarVentaLic(l){
         factura:l.numero||'', cliente:cl?cl.id:'', cliente_nombre:l.entidad||'Entidad',
         nit:l.nit_entidad||'', descripcion:l.objeto||('Licitación '+(l.numero||'')),
         cantidad:1, valor_venta:base, intereses:0, valor_costo:costo, utilidad:util,
-        parte_santi:sa, parte_luis:lu, forma_pago:'licitacion',
+        parte_santi:sa, parte_luis:lu, forma_pago:'credito_30',
         estado_pago: l.valor_desembolsado?'pagada':'pendiente',
         proveedor:'', notas:'Licitación '+(l.numero||'') };
       const ven=await pbCreate('ventas', vbody); ven._d=parseD(ven.fecha); DATA.ventas.push(ven);
