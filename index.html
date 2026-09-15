@@ -426,7 +426,38 @@ function toast(m, bad){ const t=$('#toast'); t.textContent=m; t.className='toast
   clearTimeout(window._t); window._t=setTimeout(()=>t.className='toast',2100); }
 
 /* ================= API ================= */
+// revisa si el token JWT ya venció (o está por vencer en los próximos 15s)
+function tokenExpired(){
+  if(!TOKEN) return true;
+  try{
+    const payload = JSON.parse(atob(TOKEN.split('.')[1].replace(/-/g,'+').replace(/_/g,'/')));
+    return !payload.exp || (payload.exp*1000) < (Date.now()+15000);
+  }catch(e){ return false; } // si no se puede leer, dejamos que el servidor decida
+}
+// intenta renovar el token sin pedir contraseña de nuevo (requiere que aún no haya vencido)
+async function refreshToken(){
+  if(!TOKEN) return false;
+  try{
+    const r = await fetch(PB+'/api/collections/'+(UCOL||'users')+'/auth-refresh', {method:'POST', headers:{'Authorization':TOKEN}});
+    if(!r.ok) return false;
+    const j = await r.json();
+    if(!j || !j.token) return false;
+    TOKEN=j.token; try{ localStorage.setItem('lcm_tk', TOKEN); }catch(e){}
+    return true;
+  }catch(e){ return false; }
+}
+// cierra la sesión localmente y avisa con un mensaje claro (en vez del error genérico del servidor)
+function sessionExpired(){
+  TOKEN=''; USER=''; UID='';
+  try{ ['lcm_tk','lcm_us','lcm_uid','lcm_col'].forEach(k=>localStorage.removeItem(k)); }catch(e){}
+  toast('Tu sesión expiró. Vuelve a iniciar sesión.', true);
+  showLogin();
+}
 async function api(path, opts={}){
+  if(TOKEN && tokenExpired()){
+    const ok = await refreshToken();
+    if(!ok){ sessionExpired(); throw new Error('Tu sesión expiró. Vuelve a iniciar sesión.'); }
+  }
   const r = await fetch(PB+path, {...opts, headers:{'Content-Type':'application/json',
     ...(TOKEN?{'Authorization':TOKEN}:{}) , ...(opts.headers||{})}});
   const t = await r.text(); let j=null; try{ j=JSON.parse(t); }catch(e){}
@@ -2739,6 +2770,11 @@ function buildPublicPrint(){
 }
 
 /* ================= SESIÓN ================= */
+let _tkLoopOn=false;
+function startTokenRefreshLoop(){
+  if(_tkLoopOn) return; _tkLoopOn=true;
+  setInterval(()=>{ if(TOKEN) refreshToken(); }, 10*60*1000); // refresca cada 10 min para que la sesión no venza mientras trabajas
+}
 function showLogin(){ $('#login').style.display='grid'; $('#lerr').classList.remove('on'); setTimeout(()=>$('#lm').focus(),80); }
 function hideLogin(){ $('#login').style.display='none'; }
 async function doLogin(){
@@ -2751,7 +2787,7 @@ async function doLogin(){
          localStorage.setItem('lcm_uid',UID); localStorage.setItem('lcm_col',UCOL); }catch(x){}
     hideLogin(); cart=[]; TAB='tablero';
     $('#view').innerHTML='<div class="load"><div class="spin"></div>Cargando tu información…</div>';
-    await loadAll(); render(); $('#lp').value='';
+    await loadAll(); render(); $('#lp').value=''; startTokenRefreshLoop();
   }catch(x){ err.textContent=x.message; err.classList.add('on'); }
   btn.disabled=false; btn.textContent='Entrar';
 }
@@ -2786,7 +2822,8 @@ $('#btnAccess').addEventListener('click', ()=>{ if(TOKEN) logout(); else showLog
     TOKEN=t; USER=u;
     try{
       await api('/api/collections/ventas/records?perPage=1&fields=id');
-      TAB='tablero'; await loadAll(); render(); return;
+      TAB='tablero'; await loadAll(); render(); startTokenRefreshLoop();
+      return;
     }catch(e){ TOKEN=''; USER=''; try{ localStorage.removeItem('lcm_tk'); }catch(x){} }
   }
   await loadCatalogo();
